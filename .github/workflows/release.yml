@@ -74,7 +74,10 @@ jobs:
 
   android:
     needs: create-release
-    runs-on: ubuntu-latest
+    # GitHub-hosted by default. To build on your own server instead, register a
+    # self-hosted runner labelled "android" (scripts/setup-vps-runner.sh) and set the
+    # repository variable ANDROID_RUNNER to ["self-hosted","linux","android"].
+    runs-on: ${{ fromJSON(vars.ANDROID_RUNNER || '"ubuntu-latest"') }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -88,16 +91,24 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
 
-      - name: Android NDK
+      # The SDK is preinstalled on GitHub's Ubuntu images and by the VPS setup script;
+      # only the NDK is installed here when missing.
+      - name: Android SDK and NDK
         run: |
-          NDK="${ANDROID_NDK_LATEST_HOME:-}"
-          if [ -z "$NDK" ]; then
-            sdkmanager --install "ndk;27.2.12479018"
-            NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          if [ -z "$SDK" ] || [ ! -d "$SDK" ]; then
+            echo "::error::Android SDK not found. Set ANDROID_HOME on the runner."
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          NDK="${NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}"
+          if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
+            "$SDK/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.2.12479018"
+            NDK="$SDK/ndk/27.2.12479018"
           fi
           echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "SDK: $SDK  NDK: $NDK"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -132,6 +143,11 @@ jobs:
           OUT="SillyTavernRS-${GITHUB_REF_NAME#v}-android-arm64.apk"
           cp "$APK" "$OUT"
           gh release upload "$GITHUB_REF_NAME" "$OUT" --clobber
+
+      # Self-hosted runners keep their workspace between jobs; never leave the key behind.
+      - name: Remove signing material
+        if: always()
+        run: rm -f src-tauri/gen/android/release.jks src-tauri/gen/android/keystore.properties SillyTavernRS-*.apk
 
   publish:
     needs: [create-release, desktop, android]

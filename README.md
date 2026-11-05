@@ -120,6 +120,33 @@ Required repository secrets (Settings → Secrets and variables → Actions):
 | `ANDROID_KEYSTORE_PASSWORD` | keystore/key password |
 | `ANDROID_KEY_ALIAS` | key alias |
 
+### Building the APK on your own VPS (optional)
+
+GitHub's runners are free for public repositories, so a VPS is not required. If you
+prefer your own machine (persistent caches, no queue), the Android job can run on a
+self-hosted runner while releases still go to GitHub:
+
+1. VPS: Ubuntu/Debian **x86_64** (the NDK has no ARM Linux host tools), 2+ vCPU,
+   8 GB RAM (or 4 GB + swap), 25 GB free disk.
+2. On your PC, get a registration token (valid 1 hour):
+   ```bash
+   gh api -X POST repos/faizonly5953/sillytavern-on-rust/actions/runners/registration-token --jq .token
+   ```
+3. On the VPS, as a normal user with sudo:
+   ```bash
+   curl -fsSLO https://raw.githubusercontent.com/faizonly5953/sillytavern-on-rust/main/scripts/setup-vps-runner.sh
+   RUNNER_TOKEN=<token> bash setup-vps-runner.sh
+   ```
+   It installs JDK 21, the Android SDK + NDK and the runner as a systemd service.
+4. Point the workflow at it (undo with `gh variable delete ANDROID_RUNNER`):
+   ```bash
+   gh variable set ANDROID_RUNNER -R faizonly5953/sillytavern-on-rust --body '["self-hosted","linux","android"]'
+   ```
+
+Only the tag-triggered release workflow uses the VPS; `ci.yml` (which also runs for pull
+requests from strangers) stays on GitHub's runners so untrusted code never reaches your
+server. The Windows installer is always built on GitHub's Windows runner.
+
 Keep the private key and keystore backed up outside the repository. Losing the updater key
 breaks desktop auto-update; losing the keystore means Android users must uninstall and
 reinstall to get new versions.
