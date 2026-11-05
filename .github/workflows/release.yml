@@ -35,12 +35,27 @@ jobs:
         id: create
         env:
           GH_TOKEN: ${{ github.token }}
+        # The GitHub API sometimes answers 5xx even when the release was created,
+        # so every call is retried and an existing release for the tag is reused.
         run: |
           PRERELEASE=""
           case "$GITHUB_REF_NAME" in *-*) PRERELEASE="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" --draft $PRERELEASE --verify-tag \
-            --title "SillyTavern RS $GITHUB_REF_NAME" --generate-notes
-          ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id")
+          for i in 1 2 3 4 5; do
+            gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && break
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft $PRERELEASE --verify-tag \
+              --title "SillyTavern RS $GITHUB_REF_NAME" --generate-notes && break
+            sleep $((i * 5))
+          done
+          ID=""
+          for i in 1 2 3 4 5; do
+            ID=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json databaseId --jq .databaseId 2>/dev/null || true)
+            [ -n "$ID" ] && break
+            sleep $((i * 5))
+          done
+          if [ -z "$ID" ]; then
+            echo "::error::Could not create or find release $GITHUB_REF_NAME"
+            exit 1
+          fi
           echo "id=$ID" >> "$GITHUB_OUTPUT"
 
   desktop:
@@ -142,7 +157,12 @@ jobs:
           esac
           OUT="SillyTavernRS-${GITHUB_REF_NAME#v}-android-arm64.apk"
           cp "$APK" "$OUT"
-          gh release upload "$GITHUB_REF_NAME" "$OUT" --clobber
+          for i in 1 2 3 4 5; do
+            gh release upload "$GITHUB_REF_NAME" "$OUT" --clobber && exit 0
+            sleep $((i * 5))
+          done
+          echo "::error::Upload of $OUT failed"
+          exit 1
 
       # Self-hosted runners keep their workspace between jobs; never leave the key behind.
       - name: Remove signing material
@@ -159,4 +179,9 @@ jobs:
         run: |
           LATEST="--latest"
           case "$GITHUB_REF_NAME" in *-*) LATEST="--latest=false" ;; esac
-          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false $LATEST
+          for i in 1 2 3 4 5; do
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false $LATEST && exit 0
+            sleep $((i * 5))
+          done
+          echo "::error::Publishing $GITHUB_REF_NAME failed"
+          exit 1
