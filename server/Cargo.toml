@@ -1,6 +1,6 @@
 [package]
 name = "sillytavern-rs-server"
-version = "0.1.0"
+version = "0.2.0"
 description = "Self-hosted sync server for SillyTavern RS"
 authors = ["Faiz Bagus Pradana"]
 license = "AGPL-3.0-or-later"
