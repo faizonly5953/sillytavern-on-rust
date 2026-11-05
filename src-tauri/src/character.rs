@@ -342,6 +342,22 @@ pub fn import(dirs: &DataDirs, bytes: &[u8], file_name: &str) -> AppResult<Strin
     save_new(dirs, &card, &image)
 }
 
+/// Saves card data fetched from a website, using its artwork (any format) when available.
+pub fn import_card(dirs: &DataDirs, card: &CharacterData, image: Option<&[u8]>) -> AppResult<String> {
+    if card.name.trim().is_empty() {
+        return Err(invalid("The downloaded character has no name"));
+    }
+    let png = match image {
+        Some(bytes) if png_meta::is_png(bytes) => bytes.to_vec(),
+        Some(bytes) => match image::load_from_memory(bytes) {
+            Ok(img) => encode_png(&img)?,
+            Err(_) => default_avatar(&card.name)?,
+        },
+        None => default_avatar(&card.name)?,
+    };
+    save_new(dirs, card, &png)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

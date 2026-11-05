@@ -26,11 +26,16 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: 'src-tauri -> target'
+          workspaces: |
+            src-tauri -> target
+            server -> target
       - run: pnpm install --frozen-lockfile
       # Type-check + bundle; also produces dist/ which the Rust build embeds.
       - run: pnpm build
       - run: cargo clippy --all-targets -- -D warnings
         working-directory: src-tauri
+      # Includes end-to-end sync tests against the real server crate.
       - run: cargo test
         working-directory: src-tauri
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: server

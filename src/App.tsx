@@ -2,6 +2,9 @@ import { useEffect } from 'react';
 import { CharacterEditor } from './components/CharacterEditor';
 import { ChatsPanel } from './components/ChatsPanel';
 import { ChatView } from './components/ChatView';
+import { CloudSetup } from './components/CloudSetup';
+import { ConflictDialog } from './components/ConflictDialog';
+import { ImportUrlDialog } from './components/ImportUrlDialog';
 import { PromptInspector } from './components/PromptInspector';
 import { SettingsSheet } from './components/SettingsSheet';
 import { Sidebar } from './components/Sidebar';
@@ -21,6 +24,17 @@ export default function App() {
   useEffect(() => {
     void init();
   }, [init]);
+
+  // Files dropped outside the sidebar must not make the webview navigate to them.
+  useEffect(() => {
+    const block = (e: DragEvent) => e.preventDefault();
+    window.addEventListener('dragover', block);
+    window.addEventListener('drop', block);
+    return () => {
+      window.removeEventListener('dragover', block);
+      window.removeEventListener('drop', block);
+    };
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -52,7 +66,10 @@ export default function App() {
       <ChatsPanel />
       <PromptInspector />
       <CharacterEditor />
+      <ImportUrlDialog />
       <UpdateDialog />
+      <CloudSetup />
+      <ConflictDialog />
       <Toasts />
     </div>
   );

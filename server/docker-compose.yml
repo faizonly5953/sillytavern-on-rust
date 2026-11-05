@@ -1,0 +1,62 @@
+# SillyTavern RS sync server behind Caddy (automatic HTTPS via Let's Encrypt),
+# with automatic updates from the published server image.
+# 1. Point a DNS A record (e.g. sync.example.com) at this VPS.
+# 2. cp .env.example .env  and set DOMAIN.
+# 3. docker compose up -d
+# 4. docker compose logs sync   -> copy the access token into the app.
+name: sillytavern-rs
+
+services:
+  sync:
+    image: ghcr.io/faizonly5953/sillytavern-rs-server:latest
+    # To build from source instead of pulling the published image, replace the
+    # line above with:  build: .
+    restart: unless-stopped
+    environment:
+      ST_SYNC_TOKEN: ${ST_SYNC_TOKEN:-}
+    volumes:
+      - sync-data:/data
+    expose:
+      - "8787"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - sync
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  # Auto-update: every UPDATE_INTERVAL seconds, pull the newest published server image
+  # and restart `sync` only when it changed. Production releases move the "latest" tag.
+  updater:
+    image: docker:27-cli
+    restart: unless-stopped
+    depends_on:
+      - sync
+    working_dir: /project
+    environment:
+      UPDATE_INTERVAL: ${UPDATE_INTERVAL:-3600}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/project:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          docker compose pull --quiet sync && docker compose up -d --no-deps sync
+          sleep "$$UPDATE_INTERVAL"
+        done
+
+volumes:
+  sync-data:
+  caddy-data:
+  caddy-config:

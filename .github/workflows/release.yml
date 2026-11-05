@@ -9,6 +9,10 @@ on:
 
 permissions:
   contents: write
+  packages: write
+
+env:
+  SERVER_IMAGE: ghcr.io/${{ github.repository_owner }}/sillytavern-rs-server
 
 concurrency:
   group: release-${{ github.ref }}
@@ -169,10 +173,44 @@ jobs:
         if: always()
         run: rm -f src-tauri/gen/android/release.jks src-tauri/gen/android/keystore.properties SillyTavernRS-*.apk
 
-  publish:
-    needs: [create-release, desktop, android]
+  # Sync server image. Only the version tag is pushed here; "latest" (which the
+  # VPS updater follows) moves in `publish`, after every part of the release succeeded.
+  server-image:
+    needs: create-release
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: server
+          push: true
+          tags: ${{ env.SERVER_IMAGE }}:${{ github.ref_name }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  publish:
+    needs: [create-release, desktop, android, server-image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Point the server image "latest" at this release
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: docker buildx imagetools create --tag "$SERVER_IMAGE:latest" "$SERVER_IMAGE:$GITHUB_REF_NAME"
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}

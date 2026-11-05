@@ -10,11 +10,15 @@ import type {
   ChatFile,
   ChatMessage,
   ChatSummary,
+  CloudStatus,
   GenMode,
   Provider,
   ReleaseInfo,
+  ServerInfo,
   Settings,
   StreamEvent,
+  SyncChoice,
+  SyncReport,
 } from './types';
 
 export interface GenerateRequest {
@@ -62,6 +66,15 @@ export const api = {
   previewPrompt: (charFile: string, history: ChatMessage[], mode: GenMode) =>
     invoke<BuiltPrompt>('preview_prompt', { charFile, history, mode }),
   listModels: (provider: Provider) => invoke<string[]>('list_models', { provider }),
+
+  importCharacterUrl: (url: string) => invoke<string>('import_character_url', { url }),
+
+  cloudStatus: () => invoke<CloudStatus>('cloud_status'),
+  cloudTest: (url: string, token: string) => invoke<ServerInfo>('cloud_test', { url, token }),
+  cloudConnect: (url: string, token: string, passphrase: string) =>
+    invoke<CloudStatus>('cloud_connect', { url, token, passphrase }),
+  cloudUseOffline: () => invoke<CloudStatus>('cloud_use_offline'),
+  cloudSync: (resolutions: { key: string; choice: SyncChoice }[]) => invoke<SyncReport>('cloud_sync', { resolutions }),
 
   appInfo: () => invoke<AppInfo>('app_info'),
   checkRelease: () => invoke<ReleaseInfo | null>('check_release'),

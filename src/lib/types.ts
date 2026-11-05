@@ -149,6 +149,42 @@ export interface ReleaseInfo {
   published_at: string;
 }
 
+export interface CloudStatus {
+  initialized: boolean;
+  enabled: boolean;
+  url: string;
+  has_token: boolean;
+  has_passphrase: boolean;
+  last_sync: number | null;
+}
+
+export interface ServerInfo {
+  server_id: string;
+  latest_seq: number;
+  version: string;
+}
+
+export type SyncChoice = 'local' | 'cloud';
+
+export interface SyncConflict {
+  key: string;
+  kind: 'character' | 'chat' | 'settings' | 'persona_avatar' | 'secrets';
+  id: string;
+  local_exists: boolean;
+  cloud_exists: boolean;
+  local_modified: number;
+  cloud_modified: number;
+}
+
+export interface SyncReport {
+  pushed: number;
+  pulled: number;
+  changed: string[];
+  conflicts: SyncConflict[];
+  errors: string[];
+  last_sync: number | null;
+}
+
 export function emptyCharacter(): CharacterData {
   return {
     name: '',

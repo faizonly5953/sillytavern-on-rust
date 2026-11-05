@@ -4,8 +4,11 @@
 mod avatar_protocol;
 mod character;
 mod chat;
+mod cloud;
 mod commands;
+mod crypto;
 mod error;
+mod import_url;
 mod macros;
 mod paths;
 mod png_meta;
@@ -63,6 +66,12 @@ pub fn run() {
             commands::list_models,
             commands::app_info,
             commands::check_release,
+            commands::import_character_url,
+            commands::cloud_status,
+            commands::cloud_test,
+            commands::cloud_connect,
+            commands::cloud_use_offline,
+            commands::cloud_sync,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

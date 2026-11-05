@@ -22,6 +22,12 @@ app closes. The UI talks to Rust through Tauri commands; replies stream over a T
   budget, macros (`{{char}}`, `{{user}}`, `{{random}}`, `{{roll}}`, dates, ...) and a
   prompt inspector.
 - Personas with avatars, dark/light theme, text size, mobile layout.
+- Import cards from a file, by dropping files (or a card link) on the sidebar, or from a URL:
+  Chub, JanitorAI (JannyAI), Pygmalion, AICharacterCards, RisuRealm or a direct PNG/JSON link.
+- Optional cloud sync with your own server (`server/`): local-first, works offline, asks
+  which copy to keep when the same item changed on two devices; API keys are encrypted
+  with your passphrase before upload. First start asks "this device only" or "cloud server";
+  change it later in Settings → Cloud. Deploy guide: [server/README.md](server/README.md).
 
 Not yet ported: World Info / lorebooks, group chats, tokenizers (token counts are
 estimates), Text Completion backends, extensions, STscript.

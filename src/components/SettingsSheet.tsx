@@ -1,14 +1,14 @@
 // Settings: connection, generation, prompts, personas, appearance.
 
 import { useEffect, useRef, useState } from 'react';
-import { ImagePlus, Plus, Trash2 } from 'lucide-react';
+import { Cloud, CloudOff, ImagePlus, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { activePersona, useApp } from '../lib/store';
 import type { Provider, Settings } from '../lib/types';
-import { cn, errorMessage, newId, personaAvatar, readFileBase64 } from '../lib/utils';
+import { cn, errorMessage, formatDate, newId, personaAvatar, readFileBase64 } from '../lib/utils';
 import { Avatar, Button, Field, Input, Modal, Segmented, Slider, Textarea, Toggle } from './ui';
 
-type Tab = 'connection' | 'generation' | 'prompts' | 'persona' | 'appearance';
+type Tab = 'connection' | 'generation' | 'prompts' | 'persona' | 'cloud' | 'appearance';
 type Update = (mutate: (draft: Settings) => void) => void;
 
 const OPENAI_PRESETS: [string, string][] = [
@@ -293,6 +293,86 @@ function PersonaTab({ settings, update }: { settings: Settings; update: Update }
   );
 }
 
+function CloudTab() {
+  const cloud = useApp((s) => s.cloud);
+  const syncing = useApp((s) => s.syncing);
+  const syncError = useApp((s) => s.syncError);
+  const syncNow = useApp((s) => s.syncNow);
+  const setCloud = useApp((s) => s.setCloud);
+  const setCloudSetup = useApp((s) => s.setCloudSetup);
+  const toast = useApp((s) => s.toast);
+  const [confirmOff, setConfirmOff] = useState(false);
+
+  if (!cloud?.enabled) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-start gap-3 rounded-xl border border-border bg-bg p-4">
+          <CloudOff className="mt-0.5 shrink-0 text-muted" size={18} />
+          <div className="text-sm">
+            <div className="font-medium">Offline</div>
+            <div className="text-xs text-muted">Characters, chats and settings stay on this device only.</div>
+          </div>
+        </div>
+        <Button variant="primary" onClick={() => setCloudSetup('connect')}>
+          <Cloud size={15} /> Connect to a cloud server
+        </Button>
+        <p className="text-xs text-muted">
+          Run the sync server on your VPS with Docker; the steps are in <code>server/README.md</code> of the repository.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <Field label="Server">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2 text-sm">
+          <Cloud size={15} className="shrink-0 text-accent" />
+          <span className="truncate">{cloud.url}</span>
+        </div>
+      </Field>
+      <div className="grid gap-2 text-sm sm:grid-cols-2">
+        <div className="rounded-lg border border-border bg-bg px-3 py-2">
+          <div className="text-[11px] uppercase tracking-wide text-muted">Last sync</div>
+          <div>{cloud.last_sync ? formatDate(cloud.last_sync) : 'Never'}</div>
+        </div>
+        <div className="rounded-lg border border-border bg-bg px-3 py-2">
+          <div className="text-[11px] uppercase tracking-wide text-muted">API keys</div>
+          <div>{cloud.has_passphrase ? 'Synced (encrypted)' : 'Kept on this device'}</div>
+        </div>
+      </div>
+      {syncError && <p className="rounded-lg bg-danger/10 px-3 py-2 text-xs text-danger">{syncError}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="primary" onClick={() => void syncNow({ manual: true })} disabled={syncing}>
+          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} /> {syncing ? 'Syncing…' : 'Sync now'}
+        </Button>
+        <Button onClick={() => setCloudSetup('connect')}>Change server</Button>
+        <Button
+          variant={confirmOff ? 'danger' : 'ghost'}
+          onClick={async () => {
+            if (!confirmOff) {
+              setConfirmOff(true);
+              window.setTimeout(() => setConfirmOff(false), 3000);
+              return;
+            }
+            try {
+              setCloud(await api.cloudUseOffline());
+            } catch (e) {
+              toast(errorMessage(e));
+            }
+          }}
+        >
+          <CloudOff size={15} /> {confirmOff ? 'Click again to turn off' : 'Turn off sync'}
+        </Button>
+      </div>
+      <p className="text-xs text-muted">
+        Changes sync automatically a few seconds after you make them, when the app opens, and every two minutes. Local
+        data is kept when you turn sync off.
+      </p>
+    </div>
+  );
+}
+
 function AboutSection() {
   const appInfo = useApp((s) => s.appInfo);
   const checking = useApp((s) => s.checkingUpdate);
@@ -355,6 +435,7 @@ export function SettingsSheet() {
     ['generation', 'Generation'],
     ['prompts', 'Prompts'],
     ['persona', 'Persona'],
+    ['cloud', 'Cloud'],
     ['appearance', 'Appearance'],
   ];
   const props = { settings, update };
@@ -379,6 +460,7 @@ export function SettingsSheet() {
       {tab === 'generation' && <GenerationTab {...props} />}
       {tab === 'prompts' && <PromptsTab {...props} />}
       {tab === 'persona' && <PersonaTab {...props} />}
+      {tab === 'cloud' && <CloudTab />}
       {tab === 'appearance' && <AppearanceTab {...props} />}
     </Modal>
   );

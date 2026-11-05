@@ -9,13 +9,19 @@ import type {
   CharacterSummary,
   ChatFile,
   ChatMessage,
+  CloudStatus,
   GenMode,
   Persona,
   Provider,
   Settings,
   SwipeInfo,
+  SyncChoice,
+  SyncConflict,
+  SyncReport,
 } from './types';
-import { errorMessage, newId, sendDateNow } from './utils';
+import { errorMessage, newId, readFileBase64, sendDateNow } from './utils';
+
+export type CloudSetupMode = 'choose' | 'connect' | null;
 
 export type Panel = 'settings' | 'chats' | 'prompt' | null;
 export type GenKind = 'normal' | 'regenerate' | 'continue' | 'impersonate';
@@ -53,8 +59,22 @@ interface AppStore {
   appInfo: AppInfo | null;
   update: UpdateInfo | null;
   checkingUpdate: boolean;
+  cloud: CloudStatus | null;
+  syncing: boolean;
+  syncError: string | null;
+  conflicts: SyncConflict[];
+  cloudSetup: CloudSetupMode;
+  importUrlOpen: boolean;
 
   init(): Promise<void>;
+  setCloud(status: CloudStatus): void;
+  setCloudSetup(mode: CloudSetupMode): void;
+  setImportUrlOpen(open: boolean): void;
+  syncNow(opts?: { manual?: boolean; resolutions?: { key: string; choice: SyncChoice }[] }): Promise<void>;
+  scheduleSync(): void;
+  dismissConflicts(): void;
+  importFiles(files: File[]): Promise<void>;
+  importFromUrl(url: string): Promise<boolean>;
   checkForUpdates(manual: boolean): Promise<void>;
   dismissUpdate(): void;
   toast(text: string, kind?: Toast['kind']): void;
@@ -91,6 +111,11 @@ export function activePersona(settings: Settings): Persona {
 
 let saveTimer: number | undefined;
 let pendingSave: Settings | null = null;
+let syncTimer: number | undefined;
+let syncAgain = false;
+let backgroundSyncStarted = false;
+const SYNC_DEBOUNCE_MS = 4000;
+const SYNC_INTERVAL_MS = 2 * 60 * 1000;
 
 function swipeReasoning(message: ChatMessage, id: number): string | undefined {
   return message.swipe_info?.[id]?.extra?.reasoning;
@@ -123,8 +148,38 @@ export const useApp = create<AppStore>((set, get) => {
     if (!activeFile || !chat) return;
     try {
       await api.saveChat(activeFile, chat);
+      get().scheduleSync();
     } catch (e) {
       get().toast(`Could not save chat: ${errorMessage(e)}`);
+    }
+  };
+
+  /** Reloads whatever a sync replaced locally (without triggering another sync). */
+  const applySyncReport = async (report: SyncReport) => {
+    if (!report.changed.length) return;
+    const changed = new Set(report.changed);
+    if (report.changed.some((k) => k.startsWith('character:') || k.startsWith('persona_avatar:'))) {
+      set({ characters: await api.listCharacters() });
+    }
+    if (changed.has('settings:settings')) set({ settings: await api.getSettings() });
+    if (changed.has('secrets:secrets')) set({ secrets: await api.getSecretStatus() });
+
+    const { activeFile, chat, streaming } = get();
+    if (!activeFile || !chat || streaming) return;
+    if (changed.has(`character:${activeFile}`)) {
+      if (!get().characters.some((c) => c.file === activeFile)) {
+        set({ activeFile: null, activeCard: null, chat: null });
+        return;
+      }
+      set({ activeCard: await api.getCharacter(activeFile) });
+    }
+    const stem = activeFile.replace(/\.png$/, '');
+    if (changed.has(`chat:${stem}/${chat.file}`)) {
+      try {
+        set({ chat: await api.loadChat(activeFile, chat.file) });
+      } catch {
+        await get().selectCharacter(activeFile); // chat was deleted on another device
+      }
     }
   };
 
@@ -189,18 +244,33 @@ export const useApp = create<AppStore>((set, get) => {
     appInfo: null,
     update: null,
     checkingUpdate: false,
+    cloud: null,
+    syncing: false,
+    syncError: null,
+    conflicts: [],
+    cloudSetup: null,
+    importUrlOpen: false,
 
     async init() {
       try {
-        const [settings, secrets, characters, appInfo] = await Promise.all([
+        const [settings, secrets, characters, appInfo, cloud] = await Promise.all([
           api.getSettings(),
           api.getSecretStatus(),
           api.listCharacters(),
           api.appInfo(),
+          api.cloudStatus(),
         ]);
-        set({ settings, secrets, characters, appInfo, ready: true });
+        set({ settings, secrets, characters, appInfo, cloud, ready: true, cloudSetup: cloud.initialized ? null : 'choose' });
         // Quiet check shortly after start; failures (offline, no release yet) stay silent.
         window.setTimeout(() => void get().checkForUpdates(false), 2500);
+        if (!backgroundSyncStarted) {
+          backgroundSyncStarted = true;
+          window.setInterval(() => void get().syncNow(), SYNC_INTERVAL_MS);
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') void get().syncNow();
+          });
+        }
+        if (cloud.enabled) await get().syncNow();
         const last = settings.ui.last_character;
         if (last && characters.some((c) => c.file === last)) {
           await get().selectCharacter(last, settings.ui.last_chat);
@@ -228,6 +298,85 @@ export const useApp = create<AppStore>((set, get) => {
       }
     },
     dismissUpdate: () => set({ update: null }),
+
+    setCloud: (cloud) => set({ cloud }),
+    setCloudSetup: (cloudSetup) => set({ cloudSetup }),
+    setImportUrlOpen: (importUrlOpen) => set({ importUrlOpen }),
+    dismissConflicts: () => set({ conflicts: [] }),
+
+    scheduleSync() {
+      if (!get().cloud?.enabled) return;
+      window.clearTimeout(syncTimer);
+      syncTimer = window.setTimeout(() => void get().syncNow(), SYNC_DEBOUNCE_MS);
+    },
+
+    async syncNow(opts = {}) {
+      const { cloud, syncing, streaming } = get();
+      if (!cloud?.enabled) return;
+      if (syncing) {
+        syncAgain = true;
+        return;
+      }
+      if (streaming && !opts.manual) {
+        get().scheduleSync(); // never replace a chat while a reply is being written
+        return;
+      }
+      window.clearTimeout(syncTimer);
+      set({ syncing: true });
+      try {
+        const report = await api.cloudSync(opts.resolutions ?? []);
+        const current = get().cloud;
+        set({
+          conflicts: report.conflicts,
+          syncError: report.errors[0] ?? null,
+          cloud: current ? { ...current, last_sync: report.last_sync } : current,
+        });
+        await applySyncReport(report);
+        if (opts.manual && report.errors.length) get().toast(report.errors[0]);
+        else if (opts.manual && !report.conflicts.length) {
+          get().toast(`Synced — ${report.pushed} sent, ${report.pulled} received`, 'info');
+        }
+      } catch (e) {
+        set({ syncError: errorMessage(e) });
+        if (opts.manual) get().toast(`Sync failed: ${errorMessage(e)}`);
+      } finally {
+        set({ syncing: false });
+        if (syncAgain) {
+          syncAgain = false;
+          get().scheduleSync();
+        }
+      }
+    },
+
+    async importFiles(files) {
+      let lastImported: string | null = null;
+      let count = 0;
+      for (const file of files) {
+        try {
+          lastImported = await api.importCharacter(await readFileBase64(file), file.name);
+          count++;
+        } catch (e) {
+          get().toast(`${file.name}: ${errorMessage(e)}`);
+        }
+      }
+      if (!lastImported) return;
+      await get().refreshCharacters();
+      get().toast(count > 1 ? `Imported ${count} characters` : 'Character imported', 'info');
+      await get().selectCharacter(lastImported);
+    },
+
+    async importFromUrl(url) {
+      try {
+        const file = await api.importCharacterUrl(url);
+        await get().refreshCharacters();
+        get().toast('Character imported', 'info');
+        await get().selectCharacter(file);
+        return true;
+      } catch (e) {
+        get().toast(`Import failed: ${errorMessage(e)}`);
+        return false;
+      }
+    },
 
     toast(text, kind = 'error') {
       const id = newId();
@@ -257,6 +406,7 @@ export const useApp = create<AppStore>((set, get) => {
       pendingSave = null;
       window.clearTimeout(saveTimer);
       set({ settings });
+      get().scheduleSync();
     },
     async flushSettings() {
       window.clearTimeout(saveTimer);
@@ -265,16 +415,19 @@ export const useApp = create<AppStore>((set, get) => {
       if (!toSave) return;
       try {
         await api.saveSettings(toSave);
+        get().scheduleSync();
       } catch (e) {
         get().toast(`Could not save settings: ${errorMessage(e)}`);
       }
     },
     async refreshSecrets() {
       set({ secrets: await api.getSecretStatus() });
+      get().scheduleSync();
     },
     async refreshCharacters() {
       try {
         set({ characters: await api.listCharacters() });
+        get().scheduleSync();
       } catch (e) {
         get().toast(errorMessage(e));
       }

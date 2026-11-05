@@ -14,6 +14,8 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::character::{self, CharacterData, CharacterSummary};
 use crate::chat::{self, ChatFile, ChatSummary};
+use crate::cloud;
+use crate::import_url;
 use crate::error::{AppError, AppResult, invalid};
 use crate::paths;
 use crate::prompt::{self, BuiltPrompt, GenMode};
@@ -259,6 +261,70 @@ pub async fn stop_generation(state: State<'_, AppState>, gen_id: String) -> AppR
 #[tauri::command]
 pub async fn preview_prompt(app: AppHandle, char_file: String, history: Vec<Value>, mode: Option<GenMode>) -> AppResult<BuiltPrompt> {
     blocking(app, move |s| build_prompt(s, &char_file, &history, mode.unwrap_or_default())).await
+}
+
+/// Downloads a card from Chub, JanitorAI, Pygmalion, AICC, RisuRealm or a direct link.
+#[tauri::command]
+pub async fn import_character_url(app: AppHandle, state: State<'_, AppState>, url: String) -> AppResult<String> {
+    let downloaded = import_url::download(&state.http, &url).await?;
+    blocking(app, move |s| match downloaded {
+        import_url::Downloaded::File { bytes, name } => character::import(&s.dirs, &bytes, &name),
+        import_url::Downloaded::Card { card, image } => character::import_card(&s.dirs, &card, image.as_deref()),
+    })
+    .await
+}
+
+// ---------- cloud sync ----------
+
+#[derive(Deserialize)]
+pub struct Resolution {
+    pub key: String,
+    pub choice: cloud::Choice,
+}
+
+#[tauri::command]
+pub async fn cloud_status(state: State<'_, AppState>) -> AppResult<cloud::CloudStatus> {
+    Ok(cloud::status(&state.dirs, &lock(&state.cloud)))
+}
+
+#[tauri::command]
+pub async fn cloud_test(state: State<'_, AppState>, url: String, token: String) -> AppResult<cloud::ServerInfo> {
+    cloud::test_connection(&state.http, &cloud::normalize_url(&url)?, &token).await
+}
+
+/// Verifies the server, then stores the connection for this device.
+#[tauri::command]
+pub async fn cloud_connect(state: State<'_, AppState>, url: String, token: String, passphrase: String) -> AppResult<cloud::CloudStatus> {
+    let url = cloud::normalize_url(&url)?;
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return Err(invalid("The access token is required"));
+    }
+    cloud::test_connection(&state.http, &url, &token).await?;
+    let previous_url = lock(&state.cloud).url.clone();
+    if previous_url != url {
+        cloud::reset_state(&state.dirs)?;
+    }
+    let config = cloud::CloudConfig { initialized: true, enabled: true, url, token, passphrase };
+    cloud::save_config(&state.dirs, &config)?;
+    *lock(&state.cloud) = config;
+    Ok(cloud::status(&state.dirs, &lock(&state.cloud)))
+}
+
+/// First-run choice "use without a server", or turning sync off later. Local data is kept.
+#[tauri::command]
+pub async fn cloud_use_offline(state: State<'_, AppState>) -> AppResult<cloud::CloudStatus> {
+    let config = cloud::CloudConfig { initialized: true, ..Default::default() };
+    cloud::save_config(&state.dirs, &config)?;
+    cloud::reset_state(&state.dirs)?;
+    *lock(&state.cloud) = config;
+    Ok(cloud::status(&state.dirs, &lock(&state.cloud)))
+}
+
+#[tauri::command]
+pub async fn cloud_sync(state: State<'_, AppState>, resolutions: Vec<Resolution>) -> AppResult<cloud::SyncReport> {
+    let choices = resolutions.into_iter().map(|r| (r.key, r.choice)).collect();
+    cloud::sync(&state, &choices).await
 }
 
 // ---------- app & updates ----------

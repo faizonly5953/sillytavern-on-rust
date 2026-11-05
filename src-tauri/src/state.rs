@@ -6,6 +6,7 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use crate::character::CharacterSummary;
+use crate::cloud::{self, CloudConfig};
 use crate::error::AppResult;
 use crate::paths::DataDirs;
 use crate::settings::{self, Secrets, Settings};
@@ -20,6 +21,10 @@ pub struct AppState {
     pub generations: Mutex<HashMap<String, tokio::task::AbortHandle>>,
     /// Avatar thumbnails keyed by path, invalidated by modification time.
     pub thumbnails: Mutex<HashMap<PathBuf, (u64, Vec<u8>)>>,
+    /// Cloud server settings for this device (cloud.json).
+    pub cloud: Mutex<CloudConfig>,
+    /// Only one sync round runs at a time.
+    pub sync_lock: tokio::sync::Mutex<()>,
 }
 
 impl AppState {
@@ -27,6 +32,7 @@ impl AppState {
         let dirs = DataDirs::new(root)?;
         let settings = settings::load_settings(&dirs.settings_file());
         let secrets = settings::load_secrets(&dirs.secrets_file());
+        let cloud = cloud::load_config(&dirs);
         let http = reqwest::Client::builder()
             .user_agent(concat!("SillyTavern-RS/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(20))
@@ -39,6 +45,8 @@ impl AppState {
             character_cache: Mutex::default(),
             generations: Mutex::default(),
             thumbnails: Mutex::default(),
+            cloud: Mutex::new(cloud),
+            sync_lock: tokio::sync::Mutex::new(()),
         })
     }
 }
