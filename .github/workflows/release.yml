@@ -1,0 +1,146 @@
+# Production release: push a tag that matches package.json, e.g.
+#   npm version patch && git push --follow-tags
+# Tags with a suffix (v1.2.0-beta.1) become prereleases and never trigger the in-app popup.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tag must match package.json version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $VERSION"
+            exit 1
+          fi
+
+      # Draft until every asset is uploaded, so apps never see a half-finished release.
+      - name: Create draft release
+        id: create
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=""
+          case "$GITHUB_REF_NAME" in *-*) PRERELEASE="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --draft $PRERELEASE --verify-tag \
+            --title "SillyTavern RS $GITHUB_REF_NAME" --generate-notes
+          ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id")
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    needs: create-release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+      - run: pnpm install --frozen-lockfile
+
+      # Builds the NSIS installer, signs it for the updater and uploads latest.json.
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          args: --bundles nsis
+          includeUpdaterJson: true
+
+  android:
+    needs: create-release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+
+      - name: Android NDK
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-}"
+          if [ -z "$NDK" ]; then
+            sdkmanager --install "ndk;27.2.12479018"
+            NDK="$ANDROID_SDK_ROOT/ndk/27.2.12479018"
+          fi
+          echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: 'src-tauri -> target'
+      - run: pnpm install --frozen-lockfile
+
+      # Same key for every release, otherwise Android refuses to update the app.
+      - name: Release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          cd src-tauri/gen/android
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.jks
+          printf 'storeFile=release.jks\npassword=%s\nkeyAlias=%s\n' "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_ALIAS" > keystore.properties
+
+      - name: Build APK
+        run: pnpm tauri android build --apk --target aarch64
+
+      - name: Upload APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*release*.apk' | head -n 1)
+          case "$APK" in
+            ""|*unsigned*) echo "::error::No signed release APK found ($APK)"; exit 1 ;;
+          esac
+          OUT="SillyTavernRS-${GITHUB_REF_NAME#v}-android-arm64.apk"
+          cp "$APK" "$OUT"
+          gh release upload "$GITHUB_REF_NAME" "$OUT" --clobber
+
+  publish:
+    needs: [create-release, desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST="--latest"
+          case "$GITHUB_REF_NAME" in *-*) LATEST="--latest=false" ;; esac
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false $LATEST

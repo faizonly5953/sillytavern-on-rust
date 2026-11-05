@@ -1,0 +1,51 @@
+[package]
+name = "sillytavern-on-rust"
+version = "0.1.0"
+description = "SillyTavern rebuilt with Tauri + Rust"
+authors = ["Faiz Bagus Pradana"]
+license = "AGPL-3.0-or-later"
+edition = "2024"
+
+[lib]
+# The `_lib` suffix avoids a bin/lib name clash on Windows (cargo#8519).
+name = "sillytavern_on_rust_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+# rustls + bundled roots: no OpenSSL, cross-compiles cleanly to Android.
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "http2", "charset"] }
+futures-util = "0.3"
+tokio = { version = "1", features = ["rt", "sync", "time"] }
+thiserror = "2"
+base64 = "0.22"
+crc32fast = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+fastrand = "2"
+
+# Self-update is desktop-only; Android updates by downloading the new APK.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.dev.package."*"]
+# Dependencies are compiled with optimizations so image decoding stays fast in dev.
+opt-level = 2
+
+# https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
