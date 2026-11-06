@@ -1,4 +1,52 @@
-# SillyTavern RS
+<h1 align="center">SillyTavern RS</h1>
+
+<p align="center"><b>SillyTavern, rebuilt as a native app in Rust.</b><br>
+Open it and you are already in the story: no server to start, no long loading screen.</p>
+
+<p align="center">
+  <img src="docs/screenshots/hero.jpg" alt="SillyTavern RS on desktop and on an Android phone" width="100%">
+</p>
+
+## Why this exists
+
+I built SillyTavern RS because I got frustrated. SillyTavern is a wonderful piece of
+software, but every time I wanted to chat I had to wait for it to load, and the wait was
+long. Very long. It never felt *sat set* (Indonesian for quick and snappy, no fuss). All I
+wanted was to open the app and be in a conversation.
+
+So I rebuilt the parts I use every day as a native app: a Rust core with a clean React UI,
+**no background server**, on Windows and on Android. It reads the same character cards and
+chats as SillyTavern, so you can bring your library along and keep going.
+
+## A look around
+
+<p align="center">
+  <img src="docs/screenshots/desktop-chat.jpg" alt="Messages list and an open chat side by side" width="100%">
+</p>
+
+Your conversations on the left (recent characters on top, newest chat first), the chat on
+the right. Quoted speech is highlighted and *actions* are muted, the usual roleplay look.
+
+| | |
+|---|---|
+| <img src="docs/screenshots/persona-picker.jpg" alt="Persona picker"> | <img src="docs/screenshots/create-with-ai.jpg" alt="Create with AI"> |
+| **Who are you tonight?** Switch persona in one tap from the chat header. Same-named personas stay apart with an alias. | **Create with AI.** Describe the character in your own words; your configured model writes the card. |
+| <img src="docs/screenshots/ai-result.jpg" alt="The generated card in the editor"> | <img src="docs/screenshots/settings-persona.jpg" alt="Persona settings with aliases"> |
+| **Review before saving.** The card opens in the editor, filled in. Nothing is saved until you say so. | **Personas with aliases.** An alias is only a label for you; the model still sees the name. |
+
+### On your phone
+
+<p align="center">
+  <img src="docs/screenshots/phone-home.jpg" alt="Home screen on a phone" width="30%">
+  &nbsp;
+  <img src="docs/screenshots/phone-chat.jpg" alt="A chat on a phone" width="30%">
+  &nbsp;
+  <img src="docs/screenshots/phone-persona.jpg" alt="The persona picker on a phone" width="30%">
+</p>
+
+The same app on Android. Updates download and install from inside the app.
+
+## What it is
 
 A clean rebuild of [SillyTavern](https://github.com/SillyTavern/SillyTavern) as a native
 desktop and Android app, using Tauri 2 + Rust with a React UI.
@@ -21,7 +69,10 @@ app closes. The UI talks to Rust through Tauri commands; replies stream over a T
   personality, scenario, examples, history, post-history instructions) with a context
   budget, macros (`{{char}}`, `{{user}}`, `{{random}}`, `{{roll}}`, dates, ...) and a
   prompt inspector.
-- Personas with avatars, dark/light theme, text size, mobile layout.
+- Personas with avatars and aliases, dark/light theme, text size, mobile layout.
+- Create with AI: describe a character in plain words and your configured model writes the
+  card, which opens in the editor to review before it is saved.
+- HTML comments (`<!-- ... -->`) in replies are kept in the chat but not shown.
 - Import cards from a file, by dropping files (or a card link) on the sidebar, or from a URL:
   Chub, JanitorAI (JannyAI), Pygmalion, AICharacterCards, RisuRealm or a direct PNG/JSON link.
 - Optional cloud sync with your own server (`server/`): local-first, works offline, asks
@@ -160,6 +211,18 @@ server. The Windows installer is always built on GitHub's Windows runner.
 Keep the private key and keystore backed up outside the repository. Losing the updater key
 breaks desktop auto-update; losing the keystore means Android users must uninstall and
 reinstall to get new versions.
+
+## Credits
+
+The characters and conversations in the screenshots are made up for this demo. The
+character images are public-domain paintings from Wikimedia Commons:
+
+- Isolde Vane: John William Waterhouse, [*The Lady of Shalott*](https://commons.wikimedia.org/wiki/File:John_William_Waterhouse_The_Lady_of_Shalott.jpg) (1888)
+- Circe: Waterhouse, [*Circe Offering the Cup to Ulysses*](https://commons.wikimedia.org/wiki/File:Circe_Offering_the_Cup_to_Odysseus.jpg) (1891)
+- Marin: Waterhouse, [*A Mermaid*](https://commons.wikimedia.org/wiki/File:John_William_Waterhouse_A_Mermaid.jpg) (1900)
+- Miranda: Waterhouse, [*Miranda - The Tempest*](https://commons.wikimedia.org/wiki/File:Waterhouse_miranda_the_tempest.jpg) (1916)
+- Zephyra: Alphonse Mucha, [*Reverie*](https://commons.wikimedia.org/wiki/File:Reverie_1897.jpg) (1897)
+- Ser Aldric and Wren: Frank Dicksee, [*La Belle Dame sans Merci*](https://commons.wikimedia.org/wiki/File:Dicksee_Frank,_La_Belle_Dame_Sans_Merci.jpg) (1902)
 
 ## License
 
