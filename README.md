@@ -214,6 +214,17 @@ reinstall to get new versions.
 
 ## Credits
 
+### Built with Claude
+
+I'll be honest: I couldn't have built something this complex without Claude. SillyTavern RS
+was written together with [Claude](https://claude.com) through
+[Claude Code](https://claude.com/claude-code): the Rust core, the React UI, the Android
+in-app updater, the CI and releases, and even the screenshots above. I say what I want and
+how it should feel; Claude writes and checks the code with me. It is credited as co-author
+in the commit history.
+
+### Screenshots
+
 The characters and conversations in the screenshots are made up for this demo. The
 character images are public-domain paintings from Wikimedia Commons:
 
