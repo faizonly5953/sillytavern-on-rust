@@ -325,6 +325,13 @@ pub async fn cloud_use_offline(state: State<'_, AppState>) -> AppResult<cloud::C
     Ok(cloud::status(&state.dirs, &lock(&state.cloud)))
 }
 
+/// Waits (about 25 s at most) until the server has something newer than `since`; the UI loops
+/// on this and syncs when `changed`, so changes show up without waiting for the timer.
+#[tauri::command]
+pub async fn cloud_wait(state: State<'_, AppState>, since: Option<i64>) -> AppResult<cloud::WaitResult> {
+    cloud::wait(&state, since, 25).await
+}
+
 #[tauri::command]
 pub async fn cloud_sync(state: State<'_, AppState>, resolutions: Vec<Resolution>) -> AppResult<cloud::SyncReport> {
     let choices = resolutions.into_iter().map(|r| (r.key, r.choice)).collect();

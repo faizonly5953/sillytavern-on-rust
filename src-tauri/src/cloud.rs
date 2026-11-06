@@ -481,6 +481,19 @@ impl<'a> Remote<'a> {
         Ok(Self::checked(resp).await?.json().await?)
     }
 
+    /// Long poll: returns the server's latest sequence number once it is above `since`, or after
+    /// `timeout_secs` with the unchanged value.
+    async fn wait(&self, since: i64, timeout_secs: u64) -> AppResult<i64> {
+        let resp = self
+            .request(Method::GET, "wait")
+            .query(&[("since", since), ("timeout", timeout_secs as i64)])
+            .timeout(Duration::from_secs(timeout_secs + 20))
+            .send()
+            .await?;
+        let body: Value = Self::checked(resp).await?.json().await?;
+        Ok(body.get("latest_seq").and_then(Value::as_i64).unwrap_or(since))
+    }
+
     /// Returns (revision, deleted, bytes) of the current server copy.
     async fn get(&self, kind: Kind, id: &str) -> AppResult<(i64, bool, Vec<u8>)> {
         let resp = self.request(Method::GET, "item").query(&[("kind", kind.as_str()), ("id", id)]).send().await?;
@@ -517,6 +530,27 @@ impl<'a> Remote<'a> {
 pub async fn test_connection(http: &reqwest::Client, url: &str, token: &str) -> AppResult<ServerInfo> {
     let cfg = CloudConfig { url: url.to_string(), token: token.to_string(), ..Default::default() };
     Remote::new(http, &cfg)?.info().await
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct WaitResult {
+    /// The server's latest sequence number; pass it as `since` to wait for what comes next.
+    pub latest_seq: i64,
+    /// Something changed on the server after `since`: time to sync.
+    pub changed: bool,
+}
+
+/// Waits (up to `timeout_secs`) until the server has something newer than `since`, so a change
+/// made anywhere (another device, a card posted to the server) reaches this device at once.
+/// Without `since` this device's own last synced sequence number is the baseline.
+pub async fn wait(state: &AppState, since: Option<i64>, timeout_secs: u64) -> AppResult<WaitResult> {
+    let cfg = lock(&state.cloud).clone();
+    if !cfg.enabled {
+        return Err(invalid("Cloud sync is turned off"));
+    }
+    let since = since.unwrap_or_else(|| load_state(&state.dirs).last_seq);
+    let latest_seq = Remote::new(&state.http, &cfg)?.wait(since, timeout_secs).await?;
+    Ok(WaitResult { latest_seq, changed: latest_seq > since })
 }
 
 // ---------- sync ----------
@@ -933,5 +967,49 @@ mod tests {
         let report = sync(&a, &none).await.unwrap();
         assert!(report.errors.is_empty() && report.conflicts.is_empty(), "{report:?}");
         assert_eq!(character::load(&a.dirs, "Mira.png").unwrap().first_mes, "back again");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn waiting_wakes_up_the_moment_something_changes() {
+        let url = start_server().await;
+        let (_a_dir, a) = device(&url);
+        let (_b_dir, b) = device(&url);
+        let a = std::sync::Arc::new(a);
+        let wait_in_background = |since: i64| {
+            let a = a.clone();
+            tokio::spawn(async move { wait(&a, Some(since), 20).await })
+        };
+
+        // Nothing new: the server answers after the timeout with the unchanged sequence.
+        let started = std::time::Instant::now();
+        let idle = wait(&a, Some(0), 1).await.unwrap();
+        assert_eq!(idle, WaitResult { latest_seq: 0, changed: false });
+        assert!(started.elapsed() >= Duration::from_millis(900), "answered early: {:?}", started.elapsed());
+
+        // A card posted while A is waiting wakes it up at once, long before the 20 s timeout.
+        let waiting = wait_in_background(0);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        post_card(&url, "test-token", br#"{"name":"Mira"}"#.to_vec()).await;
+        let woke = tokio::time::timeout(Duration::from_secs(5), waiting).await.expect("not woken in time");
+        assert_eq!(woke.unwrap().unwrap(), WaitResult { latest_seq: 1, changed: true });
+
+        // Without a baseline the device's own synced sequence is used: behind -> answers at once,
+        // caught up -> nothing to report.
+        assert!(wait(&a, None, 20).await.unwrap().changed);
+        sync(&a, &HashMap::new()).await.unwrap();
+        assert!(!wait(&a, None, 1).await.unwrap().changed);
+
+        // Another device's normal sync wakes it up too.
+        let waiting = wait_in_background(1);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        character::create(&b.dirs, &CharacterData { name: "Ben".into(), ..Default::default() }, None).unwrap();
+        sync(&b, &HashMap::new()).await.unwrap();
+        let woke = tokio::time::timeout(Duration::from_secs(5), waiting).await.expect("not woken in time");
+        let woke = woke.unwrap().unwrap();
+        assert!(woke.changed && woke.latest_seq >= 2, "{woke:?}");
+
+        // Turned off: no waiting.
+        lock(&a.cloud).enabled = false;
+        assert!(wait(&a, None, 1).await.is_err());
     }
 }

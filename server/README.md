@@ -70,6 +70,7 @@ All routes except `health` need `Authorization: Bearer <token>`.
 | GET | `/api/v1/health` | liveness |
 | GET | `/api/v1/info` | `server_id`, `latest_seq` |
 | GET | `/api/v1/changes?since=N` | metadata of items changed after sequence N |
+| GET | `/api/v1/wait?since=N&timeout=S` | long poll: answers when the latest sequence is above N, or after S seconds (default 25, max 55) |
 | GET | `/api/v1/item?kind=&id=` | item bytes (`x-rev`, `x-hash`, `x-deleted` headers) |
 | PUT | `/api/v1/item?kind=&id=&base_rev=&hash=` | write; 409 + current metadata if `base_rev` is stale |
 | DELETE | `/api/v1/item?kind=&id=&base_rev=` | tombstone; same conflict rule |
@@ -109,5 +110,8 @@ curl -X POST https://sync.yourdomain.com/api/v1/characters \
   The name of a deleted card is free again.
 - `401` means a wrong or missing token. `422` means the body is not a usable card (not a PNG
   or JSON card, a PNG without a card inside, a cut-off file, or no name); `error` says why.
-- Devices pick the card up when they next sync (within a couple of minutes, or tap the sync
-  button). Nothing has to be updated on the devices for this.
+- Devices that have the app open pick the card up within a second or two: they keep a
+  `GET /api/v1/wait` request open, the server answers it the moment anything is written, and
+  the app syncs and shows **Character imported: Mira**. A device that is closed or offline
+  gets the card the next time it syncs. Changes made on one device reach the others the same
+  way. Older apps simply keep syncing on their timer.

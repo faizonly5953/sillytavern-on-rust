@@ -188,6 +188,13 @@ export interface SyncConflict {
   cloud_modified: number;
 }
 
+export interface WaitResult {
+  /** The server's latest sequence number; pass it back to wait for what comes next. */
+  latest_seq: number;
+  /** Something changed on the server: time to sync. */
+  changed: boolean;
+}
+
 export interface SyncReport {
   pushed: number;
   pulled: number;

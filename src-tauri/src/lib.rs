@@ -78,6 +78,7 @@ pub fn run() {
             commands::list_models,
             commands::app_info,
             commands::check_release,
+            commands::cloud_wait,
             commands::download_update,
             commands::generate_character,
             commands::import_character_url,

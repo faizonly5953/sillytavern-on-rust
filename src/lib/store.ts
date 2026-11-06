@@ -124,6 +124,9 @@ let pendingSave: Settings | null = null;
 let syncTimer: number | undefined;
 let syncAgain = false;
 let backgroundSyncStarted = false;
+/** Off until the first sync after start, so loading a whole library is not announced card by card. */
+let announceNew = false;
+const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 const SYNC_DEBOUNCE_MS = 4000;
 const SYNC_INTERVAL_MS = 2 * 60 * 1000;
 
@@ -153,6 +156,32 @@ function withText(message: ChatMessage, text: string, reasoning?: string): ChatM
 }
 
 export const useApp = create<AppStore>((set, get) => {
+  /**
+   * Waits on the server (a long poll) and syncs the moment something changes there: a card
+   * posted to the server, or an edit from another device. The timer and the app coming back
+   * to the foreground still sync as well, so this only makes changes show up sooner.
+   */
+  const watchServer = async () => {
+    let seen: number | null = null;
+    for (;;) {
+      if (!get().cloud?.enabled) {
+        seen = null;
+        await sleep(5000);
+        continue;
+      }
+      const started = Date.now();
+      try {
+        const wait = await api.cloudWait(seen);
+        seen = wait.latest_seq;
+        if (wait.changed) await get().syncNow();
+        else if (Date.now() - started < 2000) await sleep(5000); // never spin on a server that answers at once
+      } catch {
+        seen = null;
+        await sleep(30000); // offline, or an older server without /wait: the timer keeps syncing
+      }
+    }
+  };
+
   const persist = async () => {
     const { activeFile, chat } = get();
     if (!activeFile || !chat) return;
@@ -172,11 +201,18 @@ export const useApp = create<AppStore>((set, get) => {
   };
 
   /** Reloads whatever a sync replaced locally (without triggering another sync). */
-  const applySyncReport = async (report: SyncReport) => {
+  const applySyncReport = async (report: SyncReport, announce: boolean) => {
     if (!report.changed.length) return;
     const changed = new Set(report.changed);
     if (report.changed.some((k) => k.startsWith('character:') || k.startsWith('persona_avatar:'))) {
-      set({ characters: await api.listCharacters() });
+      const known = new Set(get().characters.map((c) => c.file));
+      const characters = await api.listCharacters();
+      set({ characters });
+      // A card that arrived from elsewhere (posted to the server, created on another device).
+      const added = characters.filter((c) => !known.has(c.file));
+      if (announce && added.length) {
+        get().toast(added.length === 1 ? `Character imported: ${added[0].name}` : `Imported ${added.length} characters`, 'info');
+      }
     }
     if (changed.has('settings:settings')) set({ settings: await api.getSettings() });
     if (changed.has('secrets:secrets')) set({ secrets: await api.getSecretStatus() });
@@ -295,8 +331,10 @@ export const useApp = create<AppStore>((set, get) => {
           document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') void get().syncNow();
           });
+          void watchServer();
         }
         if (cloud.enabled) await get().syncNow();
+        announceNew = true;
         const last = settings.ui.last_character;
         if (last && characters.some((c) => c.file === last)) {
           // Desktop shows that chat next to the list; phones start on the home list.
@@ -358,7 +396,7 @@ export const useApp = create<AppStore>((set, get) => {
           syncError: report.errors[0] ?? null,
           cloud: current ? { ...current, last_sync: report.last_sync } : current,
         });
-        await applySyncReport(report);
+        await applySyncReport(report, announceNew && !opts.manual);
         if (opts.manual && report.errors.length) get().toast(report.errors[0]);
         else if (opts.manual && !report.conflicts.length) {
           get().toast(`Synced — ${report.pushed} sent, ${report.pulled} received`, 'info');

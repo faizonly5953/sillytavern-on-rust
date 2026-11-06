@@ -20,6 +20,7 @@ import type {
   StreamEvent,
   SyncChoice,
   SyncReport,
+  WaitResult,
 } from './types';
 
 export interface GenerateRequest {
@@ -78,6 +79,8 @@ export const api = {
     invoke<CloudStatus>('cloud_connect', { url, token, passphrase }),
   cloudUseOffline: () => invoke<CloudStatus>('cloud_use_offline'),
   cloudSync: (resolutions: { key: string; choice: SyncChoice }[]) => invoke<SyncReport>('cloud_sync', { resolutions }),
+  /** Long poll (about 25 s): resolves when the server has something newer than `since`. */
+  cloudWait: (since: number | null) => invoke<WaitResult>('cloud_wait', { since }),
 
   appInfo: () => invoke<AppInfo>('app_info'),
   checkRelease: () => invoke<ReleaseInfo | null>('check_release'),

@@ -10,7 +10,7 @@ mod ingest;
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, Query, Request, State};
@@ -23,6 +23,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use tokio::sync::watch;
 
 pub const KINDS: &[&str] = &["character", "chat", "settings", "persona_avatar", "secrets"];
 pub const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
@@ -31,6 +32,8 @@ pub struct Server {
     db: Mutex<Connection>,
     token: String,
     server_id: String,
+    /// The latest sequence number; clients waiting on `GET /wait` wake up when it grows.
+    latest: watch::Sender<i64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -106,11 +109,20 @@ impl Server {
                 }
             },
         };
-        Ok((Self { db: Mutex::new(db), token, server_id }, generated))
+        let latest_seq: i64 = db
+            .query_row("SELECT COALESCE(MAX(seq), 0) FROM items", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let latest = watch::channel(latest_seq).0;
+        Ok((Self { db: Mutex::new(db), token, server_id, latest }, generated))
     }
 
     pub fn token(&self) -> &str {
         &self.token
+    }
+
+    /// Tells everyone waiting on `GET /wait` that the sequence number has grown.
+    fn announce(&self, seq: i64) {
+        self.latest.send_modify(|latest| *latest = (*latest).max(seq));
     }
 
     fn db(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -207,6 +219,25 @@ async fn changes(State(server): State<Arc<Server>>, Query(q): Query<ChangesQuery
 }
 
 #[derive(Deserialize)]
+struct WaitQuery {
+    since: Option<i64>,
+    timeout: Option<u64>,
+}
+
+/// `GET /api/v1/wait?since=N&timeout=S`: a long poll. Answers as soon as the latest sequence
+/// number is above `since`, or after `timeout` seconds (default 25, at most 55) with the
+/// current value, so a client learns about a change the moment it happens without hammering
+/// the server. Clients pass the `latest_seq` of the previous answer as `since`.
+async fn wait(State(server): State<Arc<Server>>, Query(q): Query<WaitQuery>) -> Json<Value> {
+    let since = q.since.unwrap_or(0);
+    let limit = Duration::from_secs(q.timeout.unwrap_or(25).min(55));
+    let mut changes = server.latest.subscribe();
+    let _ = tokio::time::timeout(limit, changes.wait_for(|latest| *latest > since)).await;
+    let latest = *changes.borrow();
+    Json(json!({ "latest_seq": latest }))
+}
+
+#[derive(Deserialize)]
 struct ItemQuery {
     kind: String,
     id: String,
@@ -266,6 +297,7 @@ fn write(server: &Server, q: &WriteQuery, data: Option<&[u8]>) -> ApiResult<Resp
     let hash = if data.is_some() { q.hash.as_str() } else { "" };
     let seq = store(&tx, &q.kind, &q.id, rev, hash, data)?;
     tx.commit()?;
+    server.announce(seq);
     Ok(Json(json!({ "rev": rev, "seq": seq })).into_response())
 }
 
@@ -310,6 +342,7 @@ async fn import_character(State(server): State<Arc<Server>>, body: Bytes) -> Api
     };
     let seq = store(&tx, "character", &id, rev, &hash, Some(&card.png))?;
     tx.commit()?;
+    server.announce(seq);
     let created = json!({ "id": id, "name": card.name, "rev": rev, "seq": seq, "size": card.png.len() });
     Ok((StatusCode::CREATED, Json(created)).into_response())
 }
@@ -318,6 +351,7 @@ pub fn router(server: Arc<Server>) -> Router {
     let api = Router::new()
         .route("/info", get(info))
         .route("/changes", get(changes))
+        .route("/wait", get(wait))
         .route("/item", get(get_item).put(put_item).delete(delete_item))
         .route("/characters", post(import_character))
         .route_layer(middleware::from_fn_with_state(server.clone(), require_token));
