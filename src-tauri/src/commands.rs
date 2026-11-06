@@ -363,32 +363,44 @@ pub async fn generate_character(state: State<'_, AppState>, gen_id: String, desc
     let settings = lock(&state.settings).clone();
     let api_key = lock(&state.secrets).get(settings.provider.secret_key()).cloned().unwrap_or_default();
     let client = state.http.clone();
-    let prompt = ai_character::prompt(&description);
+    let mut prompt = ai_character::prompt(&description);
     let mut params = settings.generation.clone();
     params.max_tokens = params.max_tokens.max(ai_character::MIN_TOKENS);
 
     let task = tokio::spawn(async move {
-        let request = GenRequest {
-            conn: settings.connections.get(settings.provider),
-            api_key: &api_key,
-            params: &params,
-            prompt: &prompt,
-        };
-        let mut reply = String::new();
-        providers::generate(&client, settings.provider, request, |event| {
-            if let StreamEvent::Delta { text } = event {
-                reply.push_str(&text);
+        // A reply that is not a card (the model chatted, asked a question, sent nothing) gets one
+        // more try that shows the model what it wrote and the format again.
+        let mut retried = false;
+        loop {
+            let request = GenRequest {
+                conn: settings.connections.get(settings.provider),
+                api_key: &api_key,
+                params: &params,
+                prompt: &prompt,
+            };
+            let mut reply = String::new();
+            providers::generate(&client, settings.provider, request, |event| {
+                if let StreamEvent::Delta { text } = event {
+                    reply.push_str(&text);
+                }
+            })
+            .await?;
+            match ai_character::parse_card(&reply) {
+                Ok(card) => return Ok::<Value, AppError>(card),
+                Err(e) if retried => return Err(e),
+                Err(_) => {
+                    retried = true;
+                    ai_character::retry_prompt(&mut prompt, &reply);
+                }
             }
-        })
-        .await?;
-        Ok::<String, AppError>(reply)
+        }
     });
     lock(&state.generations).insert(gen_id.clone(), task.abort_handle());
     let result = task.await;
     lock(&state.generations).remove(&gen_id);
 
     match result {
-        Ok(Ok(reply)) => ai_character::parse_card(&reply).map(Some),
+        Ok(Ok(card)) => Ok(Some(card)),
         Ok(Err(e)) => Err(e),
         Err(e) if e.is_cancelled() => Ok(None),
         Err(e) => Err(invalid(format!("Generation task failed: {e}"))),
