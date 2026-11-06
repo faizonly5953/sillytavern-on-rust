@@ -51,7 +51,7 @@ pub async fn download<F: FnMut(DownloadProgress)>(
             file.write_all(&chunk)?;
             received += chunk.len() as u64;
             // About 100 updates per download, not one per network chunk.
-            if received - reported >= total.unwrap_or(1 << 20) / 100 + 1 {
+            if received - reported > total.unwrap_or(1 << 20) / 100 {
                 reported = received;
                 on_progress(DownloadProgress { received, total });
             }
