@@ -132,6 +132,7 @@ export function Slider({
   step,
   onChange,
   hint,
+  unit,
 }: {
   label: string;
   value: number;
@@ -140,32 +141,39 @@ export function Slider({
   step: number;
   onChange: (v: number) => void;
   hint?: string;
+  unit?: string;
 }) {
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted">{label}</span>
-        <input
-          type="number"
-          value={value}
-          min={min}
-          max={max}
-          step={step}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            if (!Number.isNaN(n)) onChange(n);
-          }}
-          className={cn(inputClass, 'h-7 w-24 text-right tabular-nums')}
-        />
+    <div className="space-y-2">
+      <div className="flex items-center gap-3">
+        <span className="min-w-0 flex-1 text-sm font-medium">{label}</span>
+        <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted">
+          <input
+            type="number"
+            aria-label={label}
+            value={value}
+            min={min}
+            max={max}
+            step={step}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (!Number.isNaN(n)) onChange(n);
+            }}
+            // Not inputClass: its w-full would beat w-24 and stretch the box across the row.
+            className="h-8 w-24 rounded-lg border border-border bg-bg px-2.5 text-right text-sm tabular-nums text-fg outline-none transition focus:border-accent/70 focus:ring-2 focus:ring-accent/20"
+          />
+          {unit}
+        </span>
       </div>
       <input
         type="range"
+        aria-label={label}
         value={value}
         min={min}
         max={max}
         step={step}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-[var(--accent)]"
+        className="block w-full accent-[var(--accent)]"
       />
       {hint && <p className="text-xs text-muted">{hint}</p>}
     </div>
@@ -237,7 +245,7 @@ export function Modal({
 }
 
 export function Avatar({ src, name, className }: { src: string | null; name: string; className?: string }) {
-  if (src) return <img src={src} alt="" loading="lazy" className={cn('shrink-0 bg-elevated object-cover', className)} />;
+  if (src) return <img src={src} alt="" loading="lazy" draggable={false} className={cn('shrink-0 bg-elevated object-cover', className)} />;
   return (
     <div className={cn('grid shrink-0 place-items-center bg-elevated text-sm font-semibold text-muted', className)}>
       {name.trim().charAt(0).toUpperCase() || '?'}

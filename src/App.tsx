@@ -20,6 +20,8 @@ export default function App() {
   const fontScale = useApp((s) => s.settings?.ui.font_scale ?? 1);
   // Phones show one screen at a time; desktop shows the list and the chat side by side.
   const chatOpen = useApp((s) => s.view === 'chat' && s.activeFile !== null);
+  // Only with a chat on screen: the chat header holds the button that brings the list back.
+  const sidebarHidden = useApp((s) => s.sidebarHidden && s.chat !== null && s.activeCard !== null);
 
   useEffect(() => {
     void init();
@@ -49,8 +51,9 @@ export default function App() {
     <div className="flex h-full overflow-hidden">
       <aside
         className={cn(
-          'h-full w-full md:block md:w-[360px] md:shrink-0 md:border-r md:border-border',
+          'h-full w-full md:w-[360px] md:shrink-0 md:border-r md:border-border',
           chatOpen ? 'hidden' : 'animate-fade block md:animate-none',
+          sidebarHidden ? 'md:hidden' : 'md:block',
         )}
       >
         <Home />

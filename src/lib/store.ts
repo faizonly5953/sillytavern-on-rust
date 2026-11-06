@@ -56,6 +56,8 @@ interface AppStore {
   editor: { file: string | null } | null;
   /** Mobile screen: the home list or the open chat (desktop shows both). */
   view: 'home' | 'chat';
+  /** Desktop only: the home list is collapsed so the chat uses the full width. */
+  sidebarHidden: boolean;
   toasts: Toast[];
   appInfo: AppInfo | null;
   update: UpdateInfo | null;
@@ -82,6 +84,7 @@ interface AppStore {
   dismissToast(id: string): void;
   setPanel(panel: Panel): void;
   setView(view: 'home' | 'chat'): void;
+  toggleSidebar(): void;
   openEditor(file: string | null): void;
   closeEditor(): void;
   setDraft(text: string): void;
@@ -106,7 +109,7 @@ interface AppStore {
 export function activePersona(settings: Settings): Persona {
   return (
     settings.personas.find((p) => p.id === settings.active_persona) ??
-    settings.personas[0] ?? { id: 'default', name: 'User', description: '', avatar: null }
+    settings.personas[0] ?? { id: 'default', name: 'User', alias: '', description: '', avatar: null }
   );
 }
 
@@ -254,6 +257,7 @@ export const useApp = create<AppStore>((set, get) => {
     panel: null,
     editor: null,
     view: 'home',
+    sidebarHidden: localStorage.getItem('sidebarHidden') === '1',
     toasts: [],
     appInfo: null,
     update: null,
@@ -402,6 +406,11 @@ export const useApp = create<AppStore>((set, get) => {
     },
     setPanel: (panel) => set({ panel }),
     setView: (view) => set({ view }),
+    toggleSidebar() {
+      const sidebarHidden = !get().sidebarHidden;
+      localStorage.setItem('sidebarHidden', sidebarHidden ? '1' : '0');
+      set({ sidebarHidden });
+    },
     openEditor: (file) => set({ editor: { file } }),
     closeEditor: () => set({ editor: null }),
     setDraft: (draft) => set({ draft }),

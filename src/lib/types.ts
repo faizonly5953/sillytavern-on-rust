@@ -36,6 +36,7 @@ export interface PromptSettings {
 export interface Persona {
   id: string;
   name: string;
+  alias: string;
   description: string;
   avatar: string | null;
 }

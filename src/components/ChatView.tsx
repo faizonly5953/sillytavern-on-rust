@@ -1,7 +1,7 @@
 // Chat header + message list + composer for the active character.
 
 import { useEffect, useRef } from 'react';
-import { ArrowLeft, MessagesSquare, Plus, ScanText, SquarePen, UserPen } from 'lucide-react';
+import { ArrowLeft, MessagesSquare, PanelLeftClose, PanelLeftOpen, Plus, ScanText, SquarePen, UserPen } from 'lucide-react';
 import { useApp } from '../lib/store';
 import { characterAvatar } from '../lib/utils';
 import { Composer } from './Composer';
@@ -41,6 +41,8 @@ export function ChatView() {
   const summary = useApp((s) => s.characters.find((c) => c.file === s.activeFile));
   const streamLength = useApp((s) => (s.streaming ? s.streaming.text.length + s.streaming.reasoning.length : 0));
   const setView = useApp((s) => s.setView);
+  const sidebarHidden = useApp((s) => s.sidebarHidden);
+  const toggleSidebar = useApp((s) => s.toggleSidebar);
   const typing = useApp((s) => s.streaming !== null && s.streaming.index !== -1);
   const setPanel = useApp((s) => s.setPanel);
   const newChat = useApp((s) => s.newChat);
@@ -64,6 +66,13 @@ export function ChatView() {
       <header className="flex items-center gap-2 border-b border-border bg-surface px-2 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] sm:px-3">
         <IconButton label="Back to messages" className="md:hidden" onClick={() => setView('home')}>
           <ArrowLeft size={20} />
+        </IconButton>
+        <IconButton
+          label={sidebarHidden ? 'Show messages' : 'Hide messages'}
+          className="hidden md:inline-flex"
+          onClick={toggleSidebar}
+        >
+          {sidebarHidden ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
         </IconButton>
         <Avatar
           src={characterAvatar(summary.file, { thumb: true, version: summary.modified })}

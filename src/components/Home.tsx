@@ -1,7 +1,7 @@
 // Home: search, "Recent" (story-style avatars) and "Messages" (conversations with
 // last message and time). Also the import entry points: + menu, drag & drop, URL.
 
-import { useMemo, useRef, useState, type DragEvent } from 'react';
+import { useMemo, useRef, useState, type DragEvent, type MouseEvent, type PointerEvent } from 'react';
 import {
   Cloud,
   CloudOff,
@@ -24,6 +24,44 @@ import { Avatar, IconButton } from './ui';
 
 const CARD_FILE = /\.(png|json)$/i;
 const FRESH_MS = 60 * 60 * 1000;
+
+// dragstart only fires for drags that begin inside the app (a link in a message,
+// selected text); those must never count as an import drop.
+let internalDrag = false;
+window.addEventListener('dragstart', () => (internalDrag = true));
+window.addEventListener('dragend', () => (internalDrag = false));
+
+/** Lets a mouse drag scroll a horizontal strip; touch already scrolls natively. */
+function useDragScroll() {
+  const ref = useRef<HTMLDivElement>(null);
+  const drag = useRef({ x: 0, left: 0, moved: false, down: false });
+  return {
+    ref,
+    onPointerDown: (e: PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      drag.current = { x: e.clientX, left: e.currentTarget.scrollLeft, moved: false, down: true };
+    },
+    onPointerMove: (e: PointerEvent<HTMLDivElement>) => {
+      const d = drag.current;
+      if (!d.down) return;
+      const dx = e.clientX - d.x;
+      if (!d.moved && Math.abs(dx) > 5) {
+        d.moved = true;
+        e.currentTarget.setPointerCapture(e.pointerId);
+      }
+      if (d.moved) e.currentTarget.scrollLeft = d.left - dx;
+    },
+    onPointerUp: () => void (drag.current.down = false),
+    onPointerCancel: () => void (drag.current.down = false),
+    // A drag ends with a click; it must not open the avatar under the cursor.
+    onClickCapture: (e: MouseEvent) => {
+      if (!drag.current.moved) return;
+      drag.current.moved = false;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+  };
+}
 
 function SyncIndicator() {
   const cloud = useApp((s) => s.cloud);
@@ -211,6 +249,7 @@ export function Home() {
   const [query, setQuery] = useState('');
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const recentStrip = useDragScroll();
 
   // Most recent conversation first; characters never chatted with follow, favorites first.
   const conversations = useMemo(
@@ -245,6 +284,7 @@ export function Home() {
   function onDrop(e: DragEvent) {
     e.preventDefault();
     setDragging(false);
+    if (internalDrag) return;
     const files = Array.from(e.dataTransfer.files);
     if (files.length) {
       const cards = files.filter((f) => CARD_FILE.test(f.name));
@@ -261,6 +301,7 @@ export function Home() {
   return (
     <div
       onDragOver={(e) => {
+        if (internalDrag) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
         setDragging(true);
@@ -316,7 +357,7 @@ export function Home() {
         {recent.length > 0 && !q && (
           <section className="pb-3">
             <h2 className="px-5 pb-3 text-sm font-semibold">Recent</h2>
-            <div className="scrollbar-none flex gap-3 overflow-x-auto px-5 pb-1">
+            <div {...recentStrip} className="scrollbar-none flex select-none gap-3 overflow-x-auto px-5 pb-1">
               {recent.map((c, i) => (
                 <RecentAvatar key={c.file} character={c} active={c.file === activeFile} index={i} onOpen={() => open(c.file)} />
               ))}

@@ -192,7 +192,7 @@ mod tests {
     }
 
     fn persona() -> Persona {
-        Persona { id: "p".into(), name: "Faiz".into(), description: String::new(), avatar: None }
+        Persona { id: "p".into(), name: "Faiz".into(), ..Default::default() }
     }
 
     #[test]

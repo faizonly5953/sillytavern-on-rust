@@ -144,13 +144,15 @@ impl Default for PromptSettings {
 pub struct Persona {
     pub id: String,
     pub name: String,
+    /// Label shown only in the persona picker, to tell same-named personas apart.
+    pub alias: String,
     pub description: String,
     /// File name inside `User Avatars/`.
     pub avatar: Option<String>,
 }
 
 fn default_persona() -> Persona {
-    Persona { id: "default".into(), name: "User".into(), description: String::new(), avatar: None }
+    Persona { id: "default".into(), name: "User".into(), ..Default::default() }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

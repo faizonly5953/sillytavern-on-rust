@@ -158,9 +158,10 @@ function GenerationTab({ settings, update }: { settings: Settings; update: Updat
       <Slider label="Temperature" value={g.temperature} min={0} max={2} step={0.01} onChange={(v) => set('temperature', v)} />
       <Slider label="Top P" value={g.top_p} min={0} max={1} step={0.01} onChange={(v) => set('top_p', v)} />
       <Slider label="Top K" value={g.top_k} min={0} max={200} step={1} onChange={(v) => set('top_k', v)} hint="0 disables it." />
-      <Slider label="Response length (tokens)" value={g.max_tokens} min={16} max={8192} step={16} onChange={(v) => set('max_tokens', v)} />
+      <Slider label="Response length" unit="tokens" value={g.max_tokens} min={16} max={8192} step={16} onChange={(v) => set('max_tokens', v)} />
       <Slider
-        label="Context size (tokens)"
+        label="Context size"
+        unit="tokens"
         value={g.context_size}
         min={1024}
         max={262144}
@@ -240,13 +241,14 @@ function PersonaTab({ settings, update }: { settings: Settings; update: Update }
             key={p.id}
             type="button"
             onClick={() => update((s) => void (s.active_persona = p.id))}
+            title={p.alias ? p.name : undefined}
             className={cn(
               'flex items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-sm transition',
               p.id === persona.id ? 'border-accent/60 bg-accent/10' : 'border-border text-muted hover:text-fg',
             )}
           >
             <Avatar src={p.avatar ? personaAvatar(p.avatar, version) : null} name={p.name} className="h-6 w-6 rounded-full text-[10px]" />
-            {p.name || 'Unnamed'}
+            {p.alias || p.name || 'Unnamed'}
           </button>
         ))}
         <Button
@@ -254,7 +256,7 @@ function PersonaTab({ settings, update }: { settings: Settings; update: Update }
           onClick={() =>
             update((s) => {
               const id = newId();
-              s.personas.push({ id, name: 'New persona', description: '', avatar: null });
+              s.personas.push({ id, name: 'New persona', alias: '', description: '', avatar: null });
               s.active_persona = id;
             })
           }
@@ -284,9 +286,18 @@ function PersonaTab({ settings, update }: { settings: Settings; update: Update }
           </Button>
         )}
       </div>
-      <Field label="Name" hint="Used for {{user}}.">
-        <Input value={persona.name} onChange={(e) => update((s) => void (s.personas[index].name = e.target.value))} />
-      </Field>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <Field label="Name" hint="Used for {{user}}.">
+          <Input value={persona.name} onChange={(e) => update((s) => void (s.personas[index].name = e.target.value))} />
+        </Field>
+        <Field label="Alias" hint="Only shown in the list above. Not sent to the model.">
+          <Input
+            value={persona.alias}
+            placeholder="e.g. Lucien (fantasy)"
+            onChange={(e) => update((s) => void (s.personas[index].alias = e.target.value))}
+          />
+        </Field>
+      </div>
       <Field label="Description" hint="Sent to the model so the character knows who you are.">
         <Textarea rows={5} value={persona.description} onChange={(e) => update((s) => void (s.personas[index].description = e.target.value))} />
       </Field>
