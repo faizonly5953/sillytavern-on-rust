@@ -73,5 +73,41 @@ All routes except `health` need `Authorization: Bearer <token>`.
 | GET | `/api/v1/item?kind=&id=` | item bytes (`x-rev`, `x-hash`, `x-deleted` headers) |
 | PUT | `/api/v1/item?kind=&id=&base_rev=&hash=` | write; 409 + current metadata if `base_rev` is stale |
 | DELETE | `/api/v1/item?kind=&id=&base_rev=` | tombstone; same conflict rule |
+| POST | `/api/v1/characters` | add a character card from outside (PNG or JSON body), see below |
 
 Kinds: `character`, `chat`, `settings`, `persona_avatar`, `secrets`.
+
+## Add a character card from outside
+
+`POST /api/v1/characters` adds a card that every device receives on its next sync, as if it
+had been created in the app. Use it from a script, a browser extension or plain `curl`. The
+request body is the card itself, and the format is detected from the content (no
+`Content-Type` needed):
+
+- a **PNG** card (V1, V2 or V3): stored as it is, with its artwork;
+- a **JSON** card (V1, Pygmalion, V2 or V3): stored with a generated avatar, the JSON kept
+  exactly as sent.
+
+```bash
+TOKEN=$(docker compose exec sync cat /data/token)
+
+curl -X POST https://sync.yourdomain.com/api/v1/characters \
+  -H "Authorization: Bearer $TOKEN" --data-binary @mira.png
+
+curl -X POST https://sync.yourdomain.com/api/v1/characters \
+  -H "Authorization: Bearer $TOKEN" --data-binary @mira.json
+```
+
+`201 Created` answers with the stored item:
+
+```json
+{ "id": "Mira.png", "name": "Mira", "rev": 1, "seq": 42, "size": 18171 }
+```
+
+- The file name comes from the card's name (made safe for Windows, Linux and Android). A card
+  never overwrites another one: when the name is taken it becomes `Mira1.png`, `Mira2.png`, ...
+  The name of a deleted card is free again.
+- `401` means a wrong or missing token. `422` means the body is not a usable card (not a PNG
+  or JSON card, a PNG without a card inside, a cut-off file, or no name); `error` says why.
+- Devices pick the card up when they next sync (within a couple of minutes, or tap the sync
+  button). Nothing has to be updated on the devices for this.

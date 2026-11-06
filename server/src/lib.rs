@@ -6,6 +6,8 @@
 //! number lets clients fetch only what changed since their last sync.
 //! The server never sees API keys in plain text: clients encrypt them first.
 
+mod ingest;
+
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,11 +17,12 @@ use axum::extract::{DefaultBodyLimit, Query, Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 pub const KINDS: &[&str] = &["character", "chat", "settings", "persona_avatar", "secrets"];
 pub const MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
@@ -259,19 +262,56 @@ fn write(server: &Server, q: &WriteQuery, data: Option<&[u8]>) -> ApiResult<Resp
     if current_rev != q.base_rev {
         return Ok((StatusCode::CONFLICT, Json(json!({ "error": "conflict", "current": current }))).into_response());
     }
-    let seq: i64 = tx.query_row("SELECT COALESCE(MAX(seq), 0) + 1 FROM items", [], |r| r.get(0))?;
     let rev = current_rev + 1;
-    let (hash, deleted, size) = match data {
-        Some(bytes) => (q.hash.as_str(), 0, bytes.len() as i64),
-        None => ("", 1, 0),
+    let hash = if data.is_some() { q.hash.as_str() } else { "" };
+    let seq = store(&tx, &q.kind, &q.id, rev, hash, data)?;
+    tx.commit()?;
+    Ok(Json(json!({ "rev": rev, "seq": seq })).into_response())
+}
+
+/// Writes one item revision (`data: None` marks it deleted) and returns its sequence number.
+fn store(tx: &Transaction, kind: &str, id: &str, rev: i64, hash: &str, data: Option<&[u8]>) -> rusqlite::Result<i64> {
+    let seq: i64 = tx.query_row("SELECT COALESCE(MAX(seq), 0) + 1 FROM items", [], |r| r.get(0))?;
+    let (deleted, size) = match data {
+        Some(bytes) => (0, bytes.len() as i64),
+        None => (1, 0),
     };
     tx.execute(
         "INSERT OR REPLACE INTO items (kind, id, rev, seq, hash, deleted, data, size, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        params![q.kind, q.id, rev, seq, hash, deleted, data, size, now_ms()],
+        params![kind, id, rev, seq, hash, deleted, data, size, now_ms()],
     )?;
+    Ok(seq)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// `POST /api/v1/characters`: adds a character card sent from outside the apps (a script, a
+/// browser extension, curl). The body is a PNG card or a JSON card; the format is detected from
+/// the content. It is stored as a normal `character` item, so every device receives it on its
+/// next sync. A card never overwrites another one: a taken name gets a number (`Mira1.png`).
+async fn import_character(State(server): State<Arc<Server>>, body: Bytes) -> ApiResult<Response> {
+    let card = ingest::prepare(&body).map_err(|e| ApiError(StatusCode::UNPROCESSABLE_ENTITY, e))?;
+    let hash = sha256_hex(&card.png);
+    let stem = ingest::file_stem(&card.name);
+    let mut db = server.db();
+    let tx = db.transaction()?;
+    // First free name: `stem.png`, `stem1.png`, ... A deleted card's name is free again.
+    let mut counter = 0;
+    let (id, rev) = loop {
+        let id = if counter == 0 { format!("{stem}.png") } else { format!("{stem}{counter}.png") };
+        match read_meta(&tx, "character", &id)? {
+            Some(meta) if !meta.deleted => counter += 1,
+            Some(meta) => break (id, meta.rev + 1),
+            None => break (id, 1),
+        }
+    };
+    let seq = store(&tx, "character", &id, rev, &hash, Some(&card.png))?;
     tx.commit()?;
-    Ok(Json(json!({ "rev": rev, "seq": seq })).into_response())
+    let created = json!({ "id": id, "name": card.name, "rev": rev, "seq": seq, "size": card.png.len() });
+    Ok((StatusCode::CREATED, Json(created)).into_response())
 }
 
 pub fn router(server: Arc<Server>) -> Router {
@@ -279,6 +319,7 @@ pub fn router(server: Arc<Server>) -> Router {
         .route("/info", get(info))
         .route("/changes", get(changes))
         .route("/item", get(get_item).put(put_item).delete(delete_item))
+        .route("/characters", post(import_character))
         .route_layer(middleware::from_fn_with_state(server.clone(), require_token));
     Router::new()
         .route("/api/v1/health", get(health))

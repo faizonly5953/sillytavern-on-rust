@@ -834,4 +834,104 @@ mod tests {
         assert!(report.errors[0].contains("Wrong passphrase"));
         assert!(lock(&b.secrets).is_empty());
     }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn persona_aliases_sync_in_both_directions() {
+        let url = start_server().await;
+        let (_a_dir, a) = device(&url);
+        let (_b_dir, b) = device(&url);
+        let none = HashMap::new();
+        let persona = |id: &str, alias: &str| Persona { id: id.into(), name: "Wren".into(), alias: alias.into(), ..Default::default() };
+        let aliases = |d: &AppState| lock(&d.settings).personas.iter().map(|p| p.alias.clone()).collect::<Vec<_>>();
+
+        // Two personas with the same name, told apart by their alias.
+        {
+            let mut settings = lock(&a.settings);
+            settings.personas = vec![persona("a", "Wren (fantasy)"), persona("b", "Wren (modern day)")];
+            settings.active_persona = "b".into();
+        }
+        sync(&a, &none).await.unwrap();
+        sync(&b, &none).await.unwrap();
+        assert_eq!(aliases(&b), ["Wren (fantasy)", "Wren (modern day)"]);
+
+        // Changing an alias on B reaches A.
+        lock(&b.settings).personas[0].alias = "Wren (high fantasy)".into();
+        assert_eq!(sync(&b, &none).await.unwrap().pushed, 1);
+        sync(&a, &none).await.unwrap();
+        assert_eq!(aliases(&a), ["Wren (high fantasy)", "Wren (modern day)"]);
+    }
+
+    async fn post_card(url: &str, token: &str, body: Vec<u8>) -> (StatusCode, Value) {
+        let resp = reqwest::Client::new()
+            .post(format!("{url}/api/v1/characters"))
+            .bearer_auth(token)
+            .body(body)
+            .send()
+            .await
+            .unwrap();
+        (resp.status(), resp.json().await.unwrap_or(Value::Null))
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn cards_posted_to_the_server_reach_devices() {
+        let url = start_server().await;
+        let (_dir, a) = device(&url);
+        let none = HashMap::new();
+        let created = |(status, body): (StatusCode, Value)| {
+            assert_eq!(status, StatusCode::CREATED, "{body}");
+            body["id"].as_str().unwrap().to_string()
+        };
+
+        // A PNG card keeps its artwork; JSON cards (V1, Pygmalion, V3) get a generated avatar.
+        let card = CharacterData { name: "Mira".into(), first_mes: "Hi".into(), ..Default::default() };
+        let png = character::write_png_card(&character::default_avatar("Mira").unwrap(), &card).unwrap();
+        assert_eq!(created(post_card(&url, "test-token", png.clone()).await), "Mira.png");
+        let second = br#"{"name":"Mira","description":"second"}"#.to_vec();
+        assert_eq!(created(post_card(&url, "test-token", second).await), "Mira1.png"); // never overwrites
+        let pyg = br#"{"char_name":"Pyg","char_persona":"p","char_greeting":"g"}"#.to_vec();
+        assert_eq!(created(post_card(&url, "test-token", pyg).await), "Pyg.png");
+        let v3 = br#"{"spec":"chara_card_v3","spec_version":"3.0","data":{"name":"Vee","first_mes":"yo"}}"#.to_vec();
+        assert_eq!(created(post_card(&url, "test-token", v3).await), "Vee.png");
+        let odd = br#"{"name":"A/B: C?"}"#.to_vec();
+        assert_eq!(created(post_card(&url, "test-token", odd).await), "A_B_ C_.png");
+
+        // Rejected: wrong token, nothing usable, a plain image, a cut-off PNG, no name.
+        assert_eq!(post_card(&url, "wrong", png.clone()).await.0, StatusCode::UNAUTHORIZED);
+        let bad_bodies = [
+            b"hello".to_vec(),
+            Vec::new(),
+            character::default_avatar("Plain").unwrap(),
+            png[..png.len() - 20].to_vec(),
+            br#"{"description":"no name"}"#.to_vec(),
+        ];
+        for bad in bad_bodies {
+            let (status, body) = post_card(&url, "test-token", bad).await;
+            assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+            assert!(body["error"].is_string());
+        }
+
+        // The device receives all five, and the app reads them like cards it imported itself.
+        let report = sync(&a, &none).await.unwrap();
+        assert!(report.conflicts.is_empty() && report.errors.is_empty(), "{report:?}");
+        assert_eq!(report.pulled, 5);
+        assert_eq!(character::load(&a.dirs, "Mira.png").unwrap().first_mes, "Hi");
+        assert_eq!(character::load(&a.dirs, "Mira1.png").unwrap().description, "second");
+        let pyg = character::load(&a.dirs, "Pyg.png").unwrap();
+        assert_eq!((pyg.description.as_str(), pyg.first_mes.as_str()), ("p", "g"));
+        assert_eq!(character::load(&a.dirs, "Vee.png").unwrap().first_mes, "yo");
+        assert_eq!(character::load(&a.dirs, "A_B_ C_.png").unwrap().name, "A/B: C?");
+        assert_eq!(character::list(&a.dirs, &mut HashMap::new()).unwrap().len(), 5);
+        // The generated avatar is a real image the app can decode and resize.
+        let avatar = image::load_from_memory(&fs::read(a.dirs.characters().join("Pyg.png")).unwrap()).unwrap();
+        assert_eq!((avatar.width(), avatar.height()), (64, 96));
+
+        // A deleted card's name can be used again.
+        character::delete(&a.dirs, "Mira.png", false).unwrap();
+        sync(&a, &none).await.unwrap();
+        let again = br#"{"name":"Mira","first_mes":"back again"}"#.to_vec();
+        assert_eq!(created(post_card(&url, "test-token", again).await), "Mira.png");
+        let report = sync(&a, &none).await.unwrap();
+        assert!(report.errors.is_empty() && report.conflicts.is_empty(), "{report:?}");
+        assert_eq!(character::load(&a.dirs, "Mira.png").unwrap().first_mes, "back again");
+    }
 }

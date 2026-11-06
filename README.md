@@ -79,6 +79,8 @@ app closes. The UI talks to Rust through Tauri commands; replies stream over a T
   which copy to keep when the same item changed on two devices; API keys are encrypted
   with your passphrase before upload. First start asks "this device only" or "cloud server";
   change it later in Settings → Cloud. Deploy guide: [server/README.md](server/README.md).
+  The server also has one endpoint, `POST /api/v1/characters`, to push a PNG or JSON character
+  card to all your devices from a script or `curl` (see the server README).
 
 Not yet ported: World Info / lorebooks, group chats, tokenizers (token counts are
 estimates), Text Completion backends, extensions, STscript.

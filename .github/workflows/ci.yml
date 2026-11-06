@@ -39,3 +39,5 @@ jobs:
         working-directory: src-tauri
       - run: cargo clippy --all-targets -- -D warnings
         working-directory: server
+      - run: cargo test
+        working-directory: server
