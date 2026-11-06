@@ -11,7 +11,7 @@ import { Home } from './components/Home';
 import { Toasts } from './components/ui';
 import { UpdateDialog } from './components/UpdateDialog';
 import { useApp } from './lib/store';
-import { cn } from './lib/utils';
+import { cn, IS_ANDROID } from './lib/utils';
 
 export default function App() {
   const ready = useApp((s) => s.ready);
@@ -21,7 +21,7 @@ export default function App() {
   // Phones show one screen at a time; desktop shows the list and the chat side by side.
   const chatOpen = useApp((s) => s.view === 'chat' && s.activeFile !== null);
   // Only with a chat on screen: the chat header holds the button that brings the list back.
-  const sidebarHidden = useApp((s) => s.sidebarHidden && s.chat !== null && s.activeCard !== null);
+  const sidebarHidden = useApp((s) => !IS_ANDROID && s.sidebarHidden && s.chat !== null && s.activeCard !== null);
 
   useEffect(() => {
     void init();
@@ -49,14 +49,18 @@ export default function App() {
 
   return (
     <div className="flex h-full overflow-hidden">
+      {/* Desktop: the width animates to 0 while the inner box keeps its size, so the list slides away instead of reflowing. */}
       <aside
+        inert={sidebarHidden}
         className={cn(
-          'h-full w-full md:w-[360px] md:shrink-0 md:border-r md:border-border',
+          'h-full w-full md:block md:shrink-0 md:overflow-hidden md:transition-[width] md:duration-300 md:ease-[cubic-bezier(0.2,0.8,0.2,1)]',
+          sidebarHidden ? 'md:w-0' : 'md:w-[360px]',
           chatOpen ? 'hidden' : 'animate-fade block md:animate-none',
-          sidebarHidden ? 'md:hidden' : 'md:block',
         )}
       >
-        <Home />
+        <div className="h-full w-full md:w-[360px] md:border-r md:border-border">
+          <Home />
+        </div>
       </aside>
       <main
         className={cn('min-w-0 flex-1 flex-col md:flex', chatOpen ? 'animate-slide flex md:animate-none' : 'hidden')}

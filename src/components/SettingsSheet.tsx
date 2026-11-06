@@ -3,12 +3,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Cloud, CloudOff, ImagePlus, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { api } from '../lib/api';
-import { activePersona, useApp } from '../lib/store';
+import { activePersona, useApp, type SettingsTab } from '../lib/store';
 import type { Provider, Settings } from '../lib/types';
 import { cn, errorMessage, formatDate, newId, personaAvatar, readFileBase64 } from '../lib/utils';
 import { Avatar, Button, Field, Input, Modal, Segmented, Slider, Textarea, Toggle } from './ui';
 
-type Tab = 'connection' | 'generation' | 'prompts' | 'persona' | 'cloud' | 'appearance';
 type Update = (mutate: (draft: Settings) => void) => void;
 
 const OPENAI_PRESETS: [string, string][] = [
@@ -440,9 +439,10 @@ export function SettingsSheet() {
   const setPanel = useApp((s) => s.setPanel);
   const settings = useApp((s) => s.settings);
   const update = useApp((s) => s.updateSettings);
-  const [tab, setTab] = useState<Tab>('connection');
+  const tab = useApp((s) => s.settingsTab);
+  const setTab = useApp((s) => s.setSettingsTab);
   if (!settings) return null;
-  const tabs: [Tab, string][] = [
+  const tabs: [SettingsTab, string][] = [
     ['connection', 'Connection'],
     ['generation', 'Generation'],
     ['prompts', 'Prompts'],

@@ -181,6 +181,61 @@ export function Slider({
 }
 
 /**
+ * Dropdown for header buttons; closes on outside click, Escape, or when `children` calls `close`.
+ * Phones: a full-width card under the header (anchoring to the button clipped it off-screen on
+ * 360px wide screens). From `sm` up: a card under the button, `width` is its `sm:w-*` class.
+ */
+export function Popover({
+  trigger,
+  children,
+  width = 'sm:w-56',
+}: {
+  trigger: (api: { open: boolean; toggle: () => void }) => ReactNode;
+  children: (close: () => void) => ReactNode;
+  width?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+  return (
+    <div className="relative">
+      {trigger({ open, toggle: () => setOpen((v) => !v) })}
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div
+            className={cn(
+              'animate-pop fixed inset-x-3 top-[calc(env(safe-area-inset-top)+3.75rem)] z-30 rounded-2xl border border-border bg-elevated p-1.5 shadow-xl',
+              'sm:absolute sm:inset-x-auto sm:right-0 sm:top-11 sm:origin-top-right',
+              width,
+            )}
+          >
+            {children(() => setOpen(false))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function MenuItem({ className, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition hover:bg-border/60',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/**
  * Centered popup. `required`: no close button, Escape and backdrop clicks are
  * ignored (the popup shakes instead) so the user must pick one of its actions.
  */

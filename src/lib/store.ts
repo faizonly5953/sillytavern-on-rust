@@ -24,6 +24,7 @@ import { errorMessage, newId, readFileBase64, sendDateNow } from './utils';
 export type CloudSetupMode = 'choose' | 'connect' | null;
 
 export type Panel = 'settings' | 'chats' | 'prompt' | null;
+export type SettingsTab = 'connection' | 'generation' | 'prompts' | 'persona' | 'cloud' | 'appearance';
 export type GenKind = 'normal' | 'regenerate' | 'continue' | 'impersonate' | 'improve';
 
 interface Toast {
@@ -53,6 +54,7 @@ interface AppStore {
   streaming: Streaming | null;
   draft: string;
   panel: Panel;
+  settingsTab: SettingsTab;
   editor: { file: string | null } | null;
   /** Mobile screen: the home list or the open chat (desktop shows both). */
   view: 'home' | 'chat';
@@ -83,6 +85,7 @@ interface AppStore {
   toast(text: string, kind?: Toast['kind']): void;
   dismissToast(id: string): void;
   setPanel(panel: Panel): void;
+  setSettingsTab(tab: SettingsTab): void;
   setView(view: 'home' | 'chat'): void;
   toggleSidebar(): void;
   openEditor(file: string | null): void;
@@ -255,6 +258,7 @@ export const useApp = create<AppStore>((set, get) => {
     streaming: null,
     draft: '',
     panel: null,
+    settingsTab: 'connection',
     editor: null,
     view: 'home',
     sidebarHidden: localStorage.getItem('sidebarHidden') === '1',
@@ -405,6 +409,7 @@ export const useApp = create<AppStore>((set, get) => {
       set({ toasts: get().toasts.filter((t) => t.id !== id) });
     },
     setPanel: (panel) => set({ panel }),
+    setSettingsTab: (settingsTab) => set({ settingsTab }),
     setView: (view) => set({ view }),
     toggleSidebar() {
       const sidebarHidden = !get().sidebarHidden;

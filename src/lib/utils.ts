@@ -5,6 +5,9 @@ import { clsx, type ClassValue } from 'clsx';
 
 export const cn = (...values: ClassValue[]) => clsx(values);
 
+/** Android's WebView reports itself in the user agent; used to turn off desktop-only UI. */
+export const IS_ANDROID = /android/i.test(navigator.userAgent);
+
 /** Served by the Rust `avatar://` protocol; `version` busts the webview cache. */
 export function characterAvatar(file: string, opts: { thumb?: boolean; version?: number } = {}) {
   const query = `${opts.thumb ? 'thumb=1&' : ''}v=${opts.version ?? 0}`;
