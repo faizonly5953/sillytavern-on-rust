@@ -205,6 +205,9 @@ pub struct GenerateRequest {
     pub history: Vec<Value>,
     #[serde(default)]
     pub mode: GenMode,
+    /// The composer draft, used by `GenMode::Improve`.
+    #[serde(default)]
+    pub input: String,
 }
 
 #[derive(Serialize)]
@@ -212,17 +215,17 @@ pub struct GenerateOutcome {
     pub stopped: bool,
 }
 
-fn build_prompt(state: &AppState, char_file: &str, history: &[Value], mode: GenMode) -> AppResult<BuiltPrompt> {
+fn build_prompt(state: &AppState, char_file: &str, history: &[Value], mode: GenMode, input: &str) -> AppResult<BuiltPrompt> {
     let card = character::load(&state.dirs, char_file)?;
     let settings = lock(&state.settings).clone();
-    Ok(prompt::build(&card, &settings.persona(), &settings, history, mode))
+    Ok(prompt::build(&card, &settings.persona(), &settings, history, mode, input))
 }
 
 /// Streams the reply through `on_event`; resolves when done or stopped.
 #[tauri::command]
 pub async fn generate(app: AppHandle, request: GenerateRequest, on_event: Channel<StreamEvent>) -> AppResult<GenerateOutcome> {
-    let GenerateRequest { gen_id, char_file, history, mode } = request;
-    let prompt = blocking(app.clone(), move |s| build_prompt(s, &char_file, &history, mode)).await?;
+    let GenerateRequest { gen_id, char_file, history, mode, input } = request;
+    let prompt = blocking(app.clone(), move |s| build_prompt(s, &char_file, &history, mode, &input)).await?;
     let state = app.state::<AppState>();
     let settings = lock(&state.settings).clone();
     let api_key = lock(&state.secrets).get(settings.provider.secret_key()).cloned().unwrap_or_default();
@@ -260,7 +263,7 @@ pub async fn stop_generation(state: State<'_, AppState>, gen_id: String) -> AppR
 
 #[tauri::command]
 pub async fn preview_prompt(app: AppHandle, char_file: String, history: Vec<Value>, mode: Option<GenMode>) -> AppResult<BuiltPrompt> {
-    blocking(app, move |s| build_prompt(s, &char_file, &history, mode.unwrap_or_default())).await
+    blocking(app, move |s| build_prompt(s, &char_file, &history, mode.unwrap_or_default(), "")).await
 }
 
 /// Downloads a card from Chub, JanitorAI, Pygmalion, AICC, RisuRealm or a direct link.

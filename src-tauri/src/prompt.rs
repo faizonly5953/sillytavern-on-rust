@@ -46,6 +46,8 @@ pub enum GenMode {
     Normal,
     Continue,
     Impersonate,
+    /// Rewrite the user's draft (`input`) as their next message.
+    Improve,
 }
 
 /// Same heuristic SillyTavern uses when no tokenizer is available.
@@ -102,7 +104,8 @@ pub fn macro_context<'a>(card: &'a CharacterData, persona: &'a Persona) -> Macro
     }
 }
 
-pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, history: &[Value], mode: GenMode) -> BuiltPrompt {
+/// `input` is the user's draft, only used by `GenMode::Improve`.
+pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, history: &[Value], mode: GenMode, input: &str) -> BuiltPrompt {
     let ctx = macro_context(card, persona);
     let sub = |text: &str| substitute(text, &ctx).trim().to_string();
     let prompts = &settings.prompts;
@@ -137,6 +140,7 @@ pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, histo
     match mode {
         GenMode::Continue => push_nonempty(&mut tail, Role::System, sub(&prompts.continue_nudge)),
         GenMode::Impersonate => push_nonempty(&mut tail, Role::System, sub(&prompts.impersonation_prompt)),
+        GenMode::Improve => tail.push(message(Role::System, format!("{}\n\nDraft:\n{}", sub(&prompts.improve_prompt), sub(input)))),
         GenMode::Normal => {}
     }
 
@@ -200,7 +204,7 @@ mod tests {
             json!({"is_user": true, "mes": "Hi"}),
             json!({"is_user": true, "is_system": true, "mes": "hidden"}),
         ];
-        let built = build(&card(), &persona(), &settings, &history, GenMode::Normal);
+        let built = build(&card(), &persona(), &settings, &history, GenMode::Normal, "");
         let roles: Vec<Role> = built.messages.iter().map(|m| m.role).collect();
         use Role::*;
         assert_eq!(roles, vec![System, System, System, System, System, System, Assistant, User, System]);
@@ -217,7 +221,7 @@ mod tests {
         settings.generation.context_size = 300;
         settings.generation.max_tokens = 100;
         let history: Vec<Value> = (0..50).map(|i| json!({"is_user": i % 2 == 0, "mes": format!("message number {i} {}", "x".repeat(60))})).collect();
-        let built = build(&CharacterData { name: "B".into(), ..Default::default() }, &persona(), &settings, &history, GenMode::Normal);
+        let built = build(&CharacterData { name: "B".into(), ..Default::default() }, &persona(), &settings, &history, GenMode::Normal, "");
         assert!(built.history_included > 0 && built.history_included < 50);
         assert!(built.total_tokens <= built.budget);
         assert!(built.messages.iter().any(|m| m.content.starts_with("message number 49")));
@@ -226,9 +230,16 @@ mod tests {
     #[test]
     fn modes_add_nudges() {
         let settings = Settings::default();
-        let c = build(&card(), &persona(), &settings, &[], GenMode::Continue);
+        let c = build(&card(), &persona(), &settings, &[], GenMode::Continue, "");
         assert!(c.messages.last().unwrap().content.contains("Continue your last message"));
-        let i = build(&card(), &persona(), &settings, &[], GenMode::Impersonate);
+        let i = build(&card(), &persona(), &settings, &[], GenMode::Impersonate, "");
         assert!(i.messages.last().unwrap().content.contains("point of view of Faiz"));
+        // Improve: the draft (macros filled) closes the prompt, after the instruction.
+        let history = [json!({"is_user": false, "mes": "Welcome"})];
+        let m = build(&card(), &persona(), &settings, &history, GenMode::Improve, "{{user}} opens the door slowly");
+        let last = &m.messages.last().unwrap().content;
+        assert!(last.contains("Rewrite the draft below as Faiz's next message"));
+        assert!(last.ends_with("Draft:\nFaiz opens the door slowly"));
+        assert!(m.prefill.is_none());
     }
 }

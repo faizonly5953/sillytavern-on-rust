@@ -26,6 +26,8 @@ export interface GenerateRequest {
   char_file: string;
   history: ChatMessage[];
   mode: GenMode;
+  /** Composer draft, used by the "improve" mode. */
+  input?: string;
 }
 
 export const api = {

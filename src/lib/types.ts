@@ -2,7 +2,7 @@
 
 export type Provider = 'openai' | 'claude' | 'gemini';
 export type Role = 'system' | 'user' | 'assistant';
-export type GenMode = 'normal' | 'continue' | 'impersonate';
+export type GenMode = 'normal' | 'continue' | 'impersonate' | 'improve';
 
 export interface ProviderConn {
   base_url: string;
@@ -27,6 +27,7 @@ export interface PromptSettings {
   prefer_char_instructions: boolean;
   impersonation_prompt: string;
   continue_nudge: string;
+  improve_prompt: string;
   new_chat_prompt: string;
   new_example_chat: string;
   assistant_prefill: string;

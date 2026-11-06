@@ -114,6 +114,8 @@ pub struct PromptSettings {
     pub prefer_char_instructions: bool,
     pub impersonation_prompt: String,
     pub continue_nudge: String,
+    /// Improve: rewrites the user's draft (appended after this prompt) as {{user}}'s message.
+    pub improve_prompt: String,
     pub new_chat_prompt: String,
     pub new_example_chat: String,
     /// Claude only: text the reply is forced to start with.
@@ -129,6 +131,7 @@ impl Default for PromptSettings {
             prefer_char_instructions: true,
             impersonation_prompt: "[Write your next reply from the point of view of {{user}}, using the chat history so far as a guideline for the writing style of {{user}}. Don't write as {{char}} or system. Don't describe actions of {{char}}.]".into(),
             continue_nudge: "[Continue your last message without repeating its original content.]".into(),
+            improve_prompt: "[Rewrite the draft below as {{user}}'s next message in this roleplay. Keep every event, action, line of dialogue and intention it describes, in the same order, and follow it exactly. Do not add new decisions or actions for {{user}}, and never write {{char}}'s reaction or reply. Improve the prose, dialogue and sensory detail to match the story's style and point of view. Reply with the rewritten message only.]".into(),
             new_chat_prompt: "[Start a new Chat]".into(),
             new_example_chat: "[Example Chat]".into(),
             assistant_prefill: String::new(),

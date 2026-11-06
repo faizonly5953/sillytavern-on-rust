@@ -1,7 +1,7 @@
-// Message input with send/stop, continue, impersonate, regenerate.
+// Message input with send/stop, continue, impersonate, improve, regenerate.
 
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { FastForward, RefreshCw, SendHorizontal, Sparkles, Square, UserRound } from 'lucide-react';
+import { FastForward, PenLine, RefreshCw, SendHorizontal, Sparkles, Square, UserRound } from 'lucide-react';
 import { useApp, type GenKind } from '../lib/store';
 import { cn, isTouchDevice } from '../lib/utils';
 import { Button, IconButton, inputClass } from './ui';
@@ -10,6 +10,7 @@ const actions: { kind: GenKind; label: string; icon: typeof RefreshCw }[] = [
   { kind: 'regenerate', label: 'Regenerate', icon: RefreshCw },
   { kind: 'continue', label: 'Continue', icon: FastForward },
   { kind: 'impersonate', label: 'Impersonate', icon: UserRound },
+  { kind: 'improve', label: 'Improve my draft', icon: PenLine },
 ];
 
 export function Composer() {

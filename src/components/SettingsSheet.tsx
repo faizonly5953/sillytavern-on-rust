@@ -203,6 +203,7 @@ function PromptsTab({ settings, update }: { settings: Settings; update: Update }
       {text('assistant_prefill', 'Assistant prefill (Claude)', 'The reply is forced to start with this text.', 2)}
       {text('impersonation_prompt', 'Impersonation prompt')}
       {text('continue_nudge', 'Continue nudge', undefined, 2)}
+      {text('improve_prompt', 'Improve prompt', 'Used by "Improve my draft". Your draft is added after this text.', 4)}
       {text('new_chat_prompt', 'New chat marker', undefined, 1)}
       {text('new_example_chat', 'Example chat marker', undefined, 1)}
     </div>

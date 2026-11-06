@@ -24,7 +24,7 @@ import { errorMessage, newId, readFileBase64, sendDateNow } from './utils';
 export type CloudSetupMode = 'choose' | 'connect' | null;
 
 export type Panel = 'settings' | 'chats' | 'prompt' | null;
-export type GenKind = 'normal' | 'regenerate' | 'continue' | 'impersonate';
+export type GenKind = 'normal' | 'regenerate' | 'continue' | 'impersonate' | 'improve';
 
 interface Toast {
   id: string;
@@ -195,8 +195,14 @@ export const useApp = create<AppStore>((set, get) => {
     if (failure) get().toast(failure);
 
     if (s.index === -1) {
+      const text = s.text.trim();
       const draft = get().draft.trim();
-      set({ streaming: null, draft: draft ? `${draft} ${s.text.trim()}` : s.text.trim() });
+      if (s.kind === 'improve') {
+        // Replace the draft only with a real result, so a failed run never loses it.
+        set({ streaming: null, ...(text ? { draft: text } : {}) });
+      } else {
+        set({ streaming: null, draft: draft ? `${draft} ${text}` : text });
+      }
       return;
     }
     if (!chat) {
@@ -551,6 +557,12 @@ export const useApp = create<AppStore>((set, get) => {
         base = last.mes;
       } else if (kind === 'impersonate') {
         index = -1;
+      } else if (kind === 'improve') {
+        if (!get().draft.trim()) {
+          get().toast('Write what should happen in the message box first, then use Improve.', 'info');
+          return;
+        }
+        index = -1;
       } else {
         messages = [
           ...messages,
@@ -570,11 +582,12 @@ export const useApp = create<AppStore>((set, get) => {
       }
 
       const genId = newId();
-      const mode: GenMode = kind === 'continue' || kind === 'impersonate' ? kind : 'normal';
+      const mode: GenMode = kind === 'normal' || kind === 'regenerate' ? 'normal' : kind;
+      const input = kind === 'improve' ? get().draft : '';
       set({ chat: { ...chat, messages }, streaming: { genId, kind, index, base, text: '', reasoning: '' } });
       let failure: string | null = null;
       try {
-        await api.generate({ gen_id: genId, char_file: activeFile, history, mode }, (event) => {
+        await api.generate({ gen_id: genId, char_file: activeFile, history, mode, input }, (event) => {
           const s = get().streaming;
           if (!s || s.genId !== genId) return;
           set({
