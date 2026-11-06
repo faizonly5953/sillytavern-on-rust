@@ -4,6 +4,7 @@
 import { Children, memo, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { stripHtmlComments } from '../lib/utils';
 
 const QUOTE = /("[^"\n]+"|“[^”\n]+”)/g;
 
@@ -37,7 +38,7 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
     <div className="message-body">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {text}
+        {stripHtmlComments(text)}
       </ReactMarkdown>
     </div>
   );

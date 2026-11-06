@@ -4,7 +4,7 @@ import { memo, useState } from 'react';
 import { Check, ChevronLeft, ChevronRight, Copy, Pencil, Trash2, X } from 'lucide-react';
 import { activePersona, useApp } from '../lib/store';
 import type { ChatMessage } from '../lib/types';
-import { characterAvatar, cn, personaAvatar } from '../lib/utils';
+import { characterAvatar, cn, personaAvatar, stripHtmlComments } from '../lib/utils';
 import { Markdown } from './Markdown';
 import { Avatar, Button, IconButton, Textarea } from './ui';
 
@@ -28,6 +28,8 @@ export const MessageItem = memo(function MessageItem({ message, index, isLast }:
   const [copied, setCopied] = useState(false);
 
   const text = streaming ? streaming.base + streaming.text : message.mes;
+  // What the reader sees: HTML comments are hidden notes (Edit and Copy still use the raw text).
+  const hasVisibleText = stripHtmlComments(text).trim() !== '';
   const reasoning = streaming ? streaming.reasoning : (message.extra?.reasoning ?? '');
   const persona = settings ? activePersona(settings) : null;
   const avatar = message.is_user
@@ -114,12 +116,14 @@ export const MessageItem = memo(function MessageItem({ message, index, isLast }:
               </Button>
             </div>
           </div>
-        ) : streaming && !text ? (
+        ) : streaming && !hasVisibleText ? (
           <div className="flex h-6 items-center gap-1" aria-label="Writing">
             {[0, 1, 2].map((i) => (
               <span key={i} className="typing-dot h-1.5 w-1.5 rounded-full bg-muted" style={{ animationDelay: `${i * 150}ms` }} />
             ))}
           </div>
+        ) : !hasVisibleText && text ? (
+          <p className="text-xs italic text-muted">Hidden note. Edit shows it.</p>
         ) : (
           <Markdown text={text} />
         )}

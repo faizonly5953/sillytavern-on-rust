@@ -63,9 +63,22 @@ export function timeAgo(ms: number, now = Date.now()) {
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-/** One-line preview of a message: no markdown emphasis, collapsed whitespace. */
+// A code span/block (kept as is) or an HTML comment. Whichever starts first wins, so a comment
+// that mentions a backtick is removed whole and `<!-- like this -->` inside code stays visible.
+// A comment without its closing --> (still streaming) hides everything up to the end.
+const CODE_OR_COMMENT = /(```[\s\S]*?(?:```|$)|`[^`\n]*`)|<!--[\s\S]*?(?:-->|$)|<!-{0,2}$/g;
+
+/**
+ * Display text without HTML comments. Models use `<!-- ... -->` for hidden notes; they are
+ * not shown, but the saved message and the prompt keep them (Edit shows the raw text).
+ */
+export function stripHtmlComments(text: string) {
+  return text.includes('<!') ? text.replace(CODE_OR_COMMENT, (_, code?: string) => code ?? '') : text;
+}
+
+/** One-line preview of a message: no hidden comments, no markdown emphasis, collapsed whitespace. */
 export function plainPreview(text: string) {
-  return text.replace(/[*_~`#>]+/g, '').replace(/\s+/g, ' ').trim();
+  return stripHtmlComments(text).replace(/[*_~`#>]+/g, '').replace(/\s+/g, ' ').trim();
 }
 
 export function errorMessage(error: unknown): string {
