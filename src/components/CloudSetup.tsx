@@ -105,7 +105,7 @@ export function CloudSetup() {
 
   if (mode === 'choose') {
     return (
-      <Modal open onClose={close} title="Where should your data live?">
+      <Modal open onClose={close} required={firstRun} title="Where should your data live?">
         <p className="mb-4 text-sm text-muted">
           You can change this any time in Settings → Cloud.
         </p>
@@ -132,6 +132,7 @@ export function CloudSetup() {
     <Modal
       open
       onClose={close}
+      required={firstRun}
       title="Connect to a cloud server"
       footer={
         <>

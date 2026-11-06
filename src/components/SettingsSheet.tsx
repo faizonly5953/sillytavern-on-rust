@@ -442,7 +442,7 @@ export function SettingsSheet() {
   const props = { settings, update };
   return (
     <Modal open={open} onClose={() => setPanel(null)} title="Settings" wide>
-      <div className="-mx-4 -mt-4 mb-4 flex gap-1 overflow-x-auto border-b border-border px-3 py-2">
+      <div className="scrollbar-none -mx-5 -mt-4 mb-4 flex gap-1 overflow-x-auto border-b border-border px-4 py-2">
         {tabs.map(([id, label]) => (
           <button
             key={id}

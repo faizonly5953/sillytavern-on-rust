@@ -111,6 +111,43 @@ pub fn list(dirs: &DataDirs, character_file: &str) -> AppResult<Vec<ChatSummary>
     Ok(out)
 }
 
+/// Last non-empty line of a file, reading only its tail unless that line is huge.
+fn last_line(path: &std::path::Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const TAIL: u64 = 64 * 1024;
+    let mut file = fs::File::open(path).ok()?;
+    let start = file.metadata().ok()?.len().saturating_sub(TAIL);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).ok()?;
+    let text = String::from_utf8_lossy(&buf);
+    let mut lines = text.lines().rev().filter(|l| !l.trim().is_empty());
+    let line = lines.next()?;
+    // A cut-off line (no newline before it inside the tail) means it is longer than TAIL.
+    if start > 0 && lines.next().is_none() {
+        return fs::read_to_string(path).ok()?.lines().rev().find(|l| !l.trim().is_empty()).map(String::from);
+    }
+    Some(line.to_string())
+}
+
+/// (modified ms, last message preview) of a character's newest chat, for the home list.
+pub fn latest_activity(dirs: &DataDirs, character_file: &str) -> (u64, String) {
+    let Ok(dir) = dirs.chat_dir(character_file) else { return (0, String::new()) };
+    let newest = fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("jsonl"))
+        .map(|p| (paths::modified_ms(&p), p))
+        .max_by_key(|(modified, _)| *modified);
+    let Some((modified, path)) = newest else { return (0, String::new()) };
+    let preview = last_line(&path)
+        .and_then(|line| serde_json::from_str::<Value>(&line).ok())
+        .and_then(|v| v.get("mes").and_then(Value::as_str).map(|m| m.chars().take(140).collect()))
+        .unwrap_or_default();
+    (modified, preview)
+}
+
 pub fn load(dirs: &DataDirs, character_file: &str, chat_file: &str) -> AppResult<ChatFile> {
     let path = dirs.chat_file(character_file, chat_file)?;
     if !path.exists() {
@@ -188,6 +225,16 @@ mod tests {
 
         let listed = list(&dirs, "Ann.png").unwrap();
         assert_eq!((listed[0].message_count, listed[0].last_message.as_str()), (2, "hello"));
+        assert_eq!(latest_activity(&dirs, "Ann.png").1, "hello");
+        assert_eq!(latest_activity(&dirs, "Nobody.png"), (0, String::new()));
+
+        // A last line longer than the 64 KiB tail is still read correctly.
+        let long = "x".repeat(70 * 1024);
+        messages.push(json!({"name":"U","is_user":true,"mes": long}));
+        save(&dirs, "Ann.png", &chat.file, &chat.header, &messages).unwrap();
+        assert_eq!(latest_activity(&dirs, "Ann.png").1.len(), 140);
+        messages.pop();
+        save(&dirs, "Ann.png", &chat.file, &chat.header, &messages).unwrap();
 
         let renamed = rename(&dirs, "Ann.png", &chat.file, "Beach day").unwrap();
         assert_eq!(renamed, "Beach day.jsonl");

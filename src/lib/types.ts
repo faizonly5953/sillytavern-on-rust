@@ -67,6 +67,10 @@ export interface CharacterSummary {
   fav: boolean;
   creator: string;
   modified: number;
+  /** Last message of the newest chat (empty when none). */
+  last_message: string;
+  /** When the newest chat changed, ms (0 when none). */
+  last_active: number;
 }
 
 export interface CharacterData {

@@ -44,6 +44,27 @@ export function formatDate(ms: number) {
   return new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+/** Compact chat-list time: "now", "27m", "3h", "Yesterday", "Mon", "12 Oct". */
+export function timeAgo(ms: number, now = Date.now()) {
+  if (!ms) return '';
+  const minutes = Math.floor((now - ms) / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  const date = new Date(ms);
+  const today = new Date(now);
+  if (minutes < 24 * 60 && date.getDate() === today.getDate()) return `${Math.floor(minutes / 60)}h`;
+  const yesterday = new Date(now);
+  yesterday.setDate(today.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (minutes < 7 * 24 * 60) return date.toLocaleDateString(undefined, { weekday: 'short' });
+  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+/** One-line preview of a message: no markdown emphasis, collapsed whitespace. */
+export function plainPreview(text: string) {
+  return text.replace(/[*_~`#>]+/g, '').replace(/\s+/g, ' ').trim();
+}
+
 export function errorMessage(error: unknown): string {
   if (typeof error === 'string') return error;
   if (error instanceof Error) return error.message;

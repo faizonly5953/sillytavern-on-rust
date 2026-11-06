@@ -54,7 +54,8 @@ interface AppStore {
   draft: string;
   panel: Panel;
   editor: { file: string | null } | null;
-  sidebarOpen: boolean;
+  /** Mobile screen: the home list or the open chat (desktop shows both). */
+  view: 'home' | 'chat';
   toasts: Toast[];
   appInfo: AppInfo | null;
   update: UpdateInfo | null;
@@ -80,7 +81,7 @@ interface AppStore {
   toast(text: string, kind?: Toast['kind']): void;
   dismissToast(id: string): void;
   setPanel(panel: Panel): void;
-  setSidebar(open: boolean): void;
+  setView(view: 'home' | 'chat'): void;
   openEditor(file: string | null): void;
   closeEditor(): void;
   setDraft(text: string): void;
@@ -148,6 +149,13 @@ export const useApp = create<AppStore>((set, get) => {
     if (!activeFile || !chat) return;
     try {
       await api.saveChat(activeFile, chat);
+      // Keep the home list's preview and time current without reloading it.
+      const last = chat.messages[chat.messages.length - 1];
+      set({
+        characters: get().characters.map((c) =>
+          c.file === activeFile ? { ...c, last_active: Date.now(), last_message: (last?.mes ?? '').slice(0, 140) } : c,
+        ),
+      });
       get().scheduleSync();
     } catch (e) {
       get().toast(`Could not save chat: ${errorMessage(e)}`);
@@ -245,7 +253,7 @@ export const useApp = create<AppStore>((set, get) => {
     draft: '',
     panel: null,
     editor: null,
-    sidebarOpen: false,
+    view: 'home',
     toasts: [],
     appInfo: null,
     update: null,
@@ -279,9 +287,9 @@ export const useApp = create<AppStore>((set, get) => {
         if (cloud.enabled) await get().syncNow();
         const last = settings.ui.last_character;
         if (last && characters.some((c) => c.file === last)) {
+          // Desktop shows that chat next to the list; phones start on the home list.
           await get().selectCharacter(last, settings.ui.last_chat);
-        } else if (!characters.length) {
-          set({ sidebarOpen: true });
+          set({ view: 'home' });
         }
       } catch (e) {
         set({ ready: true });
@@ -393,8 +401,8 @@ export const useApp = create<AppStore>((set, get) => {
       set({ toasts: get().toasts.filter((t) => t.id !== id) });
     },
     setPanel: (panel) => set({ panel }),
-    setSidebar: (sidebarOpen) => set({ sidebarOpen }),
-    openEditor: (file) => set({ editor: { file }, sidebarOpen: false }),
+    setView: (view) => set({ view }),
+    openEditor: (file) => set({ editor: { file } }),
     closeEditor: () => set({ editor: null }),
     setDraft: (draft) => set({ draft }),
 
@@ -445,7 +453,7 @@ export const useApp = create<AppStore>((set, get) => {
         const [card, chats] = await Promise.all([api.getCharacter(file), api.listChats(file)]);
         const target = chatFile && chats.some((c) => c.file === chatFile) ? chatFile : chats[0]?.file;
         const chat = target ? await api.loadChat(file, target) : await api.createChat(file);
-        set({ activeFile: file, activeCard: card, chat, sidebarOpen: false, draft: '' });
+        set({ activeFile: file, activeCard: card, chat, view: 'chat', draft: '' });
         get().updateSettings((s) => {
           s.ui.last_character = file;
           s.ui.last_chat = chat.file;

@@ -7,7 +7,7 @@ import { ConflictDialog } from './components/ConflictDialog';
 import { ImportUrlDialog } from './components/ImportUrlDialog';
 import { PromptInspector } from './components/PromptInspector';
 import { SettingsSheet } from './components/SettingsSheet';
-import { Sidebar } from './components/Sidebar';
+import { Home } from './components/Home';
 import { Toasts } from './components/ui';
 import { UpdateDialog } from './components/UpdateDialog';
 import { useApp } from './lib/store';
@@ -18,8 +18,8 @@ export default function App() {
   const init = useApp((s) => s.init);
   const theme = useApp((s) => s.settings?.ui.theme ?? 'dark');
   const fontScale = useApp((s) => s.settings?.ui.font_scale ?? 1);
-  const sidebarOpen = useApp((s) => s.sidebarOpen);
-  const setSidebar = useApp((s) => s.setSidebar);
+  // Phones show one screen at a time; desktop shows the list and the chat side by side.
+  const chatOpen = useApp((s) => s.view === 'chat' && s.activeFile !== null);
 
   useEffect(() => {
     void init();
@@ -47,19 +47,17 @@ export default function App() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      <div
-        className={cn('fixed inset-0 z-30 bg-black/50 transition-opacity md:hidden', sidebarOpen ? 'opacity-100' : 'pointer-events-none opacity-0')}
-        onClick={() => setSidebar(false)}
-      />
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 w-[85vw] max-w-[320px] transition-transform duration-200 md:static md:z-auto md:w-[300px] md:translate-x-0',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          'h-full w-full md:block md:w-[360px] md:shrink-0 md:border-r md:border-border',
+          chatOpen ? 'hidden' : 'animate-fade block md:animate-none',
         )}
       >
-        <Sidebar />
+        <Home />
       </aside>
-      <main className="flex min-w-0 flex-1 flex-col">
+      <main
+        className={cn('min-w-0 flex-1 flex-col md:flex', chatOpen ? 'animate-slide flex md:animate-none' : 'hidden')}
+      >
         <ChatView />
       </main>
       <SettingsSheet />

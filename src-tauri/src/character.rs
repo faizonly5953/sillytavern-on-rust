@@ -232,6 +232,10 @@ pub struct CharacterSummary {
     pub fav: bool,
     pub creator: String,
     pub modified: u64,
+    /// Last message of the newest chat (empty when there is none).
+    pub last_message: String,
+    /// When the newest chat changed, in ms (0 when there is none).
+    pub last_active: u64,
 }
 
 fn summarize(file: &str, card: &CharacterData, modified: u64) -> CharacterSummary {
@@ -243,7 +247,15 @@ fn summarize(file: &str, card: &CharacterData, modified: u64) -> CharacterSummar
         fav: card.is_favorite(),
         creator: card.creator.clone(),
         modified,
+        last_message: String::new(),
+        last_active: 0,
     }
+}
+
+/// Fills chat activity; not cached because chats change far more often than cards.
+fn with_activity(dirs: &DataDirs, mut summary: CharacterSummary) -> CharacterSummary {
+    (summary.last_active, summary.last_message) = crate::chat::latest_activity(dirs, &summary.file);
+    summary
 }
 
 /// Lists all cards, re-parsing only files whose modification time changed.
@@ -260,14 +272,14 @@ pub fn list(dirs: &DataDirs, cache: &mut HashMap<String, CharacterSummary>) -> A
         let modified = paths::modified_ms(&path);
         seen.insert(file.clone());
         if let Some(hit) = cache.get(&file).filter(|c| c.modified == modified) {
-            out.push(hit.clone());
+            out.push(with_activity(dirs, hit.clone()));
             continue;
         }
         match fs::read(&path).map_err(AppError::from).and_then(|bytes| read_png_card(&bytes)) {
             Ok(card) => {
                 let summary = summarize(&file, &card, modified);
                 cache.insert(file, summary.clone());
-                out.push(summary);
+                out.push(with_activity(dirs, summary));
             }
             Err(e) => eprintln!("Skipping character {file}: {e}"),
         }

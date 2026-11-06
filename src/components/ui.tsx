@@ -1,6 +1,6 @@
 // Base UI primitives: Button, IconButton, Input, Textarea, Modal, Field, Toasts.
 
-import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
+import { useEffect, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from 'react';
 import { X } from 'lucide-react';
 import { useApp } from '../lib/store';
 import { cn } from '../lib/utils';
@@ -172,6 +172,10 @@ export function Slider({
   );
 }
 
+/**
+ * Centered popup. `required`: no close button, Escape and backdrop clicks are
+ * ignored (the popup shakes instead) so the user must pick one of its actions.
+ */
 export function Modal({
   open,
   onClose,
@@ -179,6 +183,7 @@ export function Modal({
   children,
   footer,
   wide,
+  required,
 }: {
   open: boolean;
   onClose: () => void;
@@ -186,34 +191,43 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  required?: boolean;
 }) {
+  const [shake, setShake] = useState(false);
   useEffect(() => {
-    if (!open) return;
+    if (!open || required) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, required]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 backdrop-blur-[2px] sm:items-center sm:p-6" onMouseDown={onClose}>
+    <div
+      className="animate-fade fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-sm sm:p-6"
+      onMouseDown={required ? () => setShake(true) : onClose}
+    >
       <div
         role="dialog"
         aria-modal="true"
         onMouseDown={(e) => e.stopPropagation()}
+        onAnimationEnd={() => setShake(false)}
         className={cn(
-          'flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-border bg-surface shadow-2xl sm:rounded-2xl',
-          wide ? 'sm:max-w-3xl' : 'sm:max-w-lg',
+          'flex max-h-[88dvh] w-full flex-col overflow-hidden rounded-3xl border border-border bg-surface shadow-2xl shadow-black/40',
+          wide ? 'max-w-3xl' : 'max-w-lg',
+          shake ? 'animate-shake' : 'animate-pop',
         )}
       >
-        <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2 border-b border-border px-5 py-3.5">
           <h2 className="flex-1 truncate text-base font-semibold">{title}</h2>
-          <IconButton label="Close" onClick={onClose}>
-            <X size={18} />
-          </IconButton>
+          {!required && (
+            <IconButton label="Close" onClick={onClose}>
+              <X size={18} />
+            </IconButton>
+          )}
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4">{children}</div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
+          <div className="flex flex-wrap items-center gap-2 border-t border-border px-5 py-3">
             {footer}
           </div>
         )}

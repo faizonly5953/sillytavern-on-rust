@@ -41,7 +41,8 @@ export function UpdateDialog() {
   return (
     <Modal
       open
-      onClose={() => !busy && dismiss()}
+      onClose={dismiss}
+      required
       title="Update available"
       footer={
         <>
