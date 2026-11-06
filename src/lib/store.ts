@@ -55,7 +55,8 @@ interface AppStore {
   draft: string;
   panel: Panel;
   settingsTab: SettingsTab;
-  editor: { file: string | null } | null;
+  /** `draft` pre-fills a new character (from "Create with AI"); it is not saved until the user saves. */
+  editor: { file: string | null; draft?: CharacterData } | null;
   /** Mobile screen: the home list or the open chat (desktop shows both). */
   view: 'home' | 'chat';
   /** Desktop only: the home list is collapsed so the chat uses the full width. */
@@ -70,11 +71,13 @@ interface AppStore {
   conflicts: SyncConflict[];
   cloudSetup: CloudSetupMode;
   importUrlOpen: boolean;
+  aiCharacterOpen: boolean;
 
   init(): Promise<void>;
   setCloud(status: CloudStatus): void;
   setCloudSetup(mode: CloudSetupMode): void;
   setImportUrlOpen(open: boolean): void;
+  setAiCharacterOpen(open: boolean): void;
   syncNow(opts?: { manual?: boolean; resolutions?: { key: string; choice: SyncChoice }[] }): Promise<void>;
   scheduleSync(): void;
   dismissConflicts(): void;
@@ -88,7 +91,7 @@ interface AppStore {
   setSettingsTab(tab: SettingsTab): void;
   setView(view: 'home' | 'chat'): void;
   toggleSidebar(): void;
-  openEditor(file: string | null): void;
+  openEditor(file: string | null, draft?: CharacterData): void;
   closeEditor(): void;
   setDraft(text: string): void;
   updateSettings(mutate: (draft: Settings) => void): void;
@@ -272,6 +275,7 @@ export const useApp = create<AppStore>((set, get) => {
     conflicts: [],
     cloudSetup: null,
     importUrlOpen: false,
+    aiCharacterOpen: false,
 
     async init() {
       try {
@@ -324,6 +328,7 @@ export const useApp = create<AppStore>((set, get) => {
     setCloud: (cloud) => set({ cloud }),
     setCloudSetup: (cloudSetup) => set({ cloudSetup }),
     setImportUrlOpen: (importUrlOpen) => set({ importUrlOpen }),
+    setAiCharacterOpen: (aiCharacterOpen) => set({ aiCharacterOpen }),
     dismissConflicts: () => set({ conflicts: [] }),
 
     scheduleSync() {
@@ -416,7 +421,7 @@ export const useApp = create<AppStore>((set, get) => {
       localStorage.setItem('sidebarHidden', sidebarHidden ? '1' : '0');
       set({ sidebarHidden });
     },
-    openEditor: (file) => set({ editor: { file } }),
+    openEditor: (file, draft) => set({ editor: { file, draft } }),
     closeEditor: () => set({ editor: null }),
     setDraft: (draft) => set({ draft }),
 

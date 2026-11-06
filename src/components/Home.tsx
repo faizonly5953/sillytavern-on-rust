@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Search,
   Settings as SettingsIcon,
+  Sparkles,
   Star,
   Upload,
   UserPlus,
@@ -93,8 +94,10 @@ function NewMenu({ onImportFile }: { onImportFile: () => void }) {
   const [open, setOpen] = useState(false);
   const openEditor = useApp((s) => s.openEditor);
   const setImportUrlOpen = useApp((s) => s.setImportUrlOpen);
+  const setAiCharacterOpen = useApp((s) => s.setAiCharacterOpen);
   const items = [
     { label: 'New character', icon: UserPlus, run: () => openEditor(null) },
+    { label: 'Create with AI', icon: Sparkles, run: () => setAiCharacterOpen(true) },
     { label: 'Import card file', icon: FileUp, run: onImportFile },
     { label: 'Import from URL', icon: Link, run: () => setImportUrlOpen(true) },
   ];

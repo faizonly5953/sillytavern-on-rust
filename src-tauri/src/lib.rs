@@ -1,6 +1,7 @@
 //! SillyTavern on Rust: everything the old Express server did now runs
 //! in-process and only while the app window is open (no persistent server).
 
+mod ai_character;
 mod avatar_protocol;
 mod character;
 mod chat;
@@ -77,6 +78,8 @@ pub fn run() {
             commands::list_models,
             commands::app_info,
             commands::check_release,
+            commands::download_update,
+            commands::generate_character,
             commands::import_character_url,
             commands::cloud_status,
             commands::cloud_test,

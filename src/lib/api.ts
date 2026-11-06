@@ -11,6 +11,7 @@ import type {
   ChatMessage,
   ChatSummary,
   CloudStatus,
+  DownloadProgress,
   GenMode,
   Provider,
   ReleaseInfo,
@@ -80,4 +81,14 @@ export const api = {
 
   appInfo: () => invoke<AppInfo>('app_info'),
   checkRelease: () => invoke<ReleaseInfo | null>('check_release'),
+  /** Android: downloads the release APK into the app cache; resolves with its path. */
+  downloadUpdate: (url: string, onProgress: (p: DownloadProgress) => void) => {
+    const channel = new Channel<DownloadProgress>();
+    channel.onmessage = onProgress;
+    return invoke<string>('download_update', { url, onProgress: channel });
+  },
+
+  /** "Create with AI": the card fields the model wrote, or null when stopped. */
+  generateCharacter: (genId: string, description: string) =>
+    invoke<Partial<CharacterData> | null>('generate_character', { genId, description }),
 };

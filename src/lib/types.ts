@@ -155,6 +155,12 @@ export interface ReleaseInfo {
   published_at: string;
 }
 
+export interface DownloadProgress {
+  received: number;
+  /** null when the server does not report a size. */
+  total: number | null;
+}
+
 export interface CloudStatus {
   initialized: boolean;
   enabled: boolean;

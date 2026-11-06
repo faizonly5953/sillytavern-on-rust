@@ -41,7 +41,7 @@ export function CharacterEditor() {
     setAvatar(null);
     setConfirmDelete(false);
     if (!editor.file) {
-      setCard(emptyCharacter());
+      setCard(editor.draft ?? emptyCharacter());
       return;
     }
     api

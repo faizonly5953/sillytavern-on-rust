@@ -110,8 +110,12 @@ No server is needed: GitHub Actions builds everything and GitHub Releases hosts 
    then publishes the release.
 3. Apps check on start (and from Settings → Appearance → Check for updates):
    - **Windows**: `tauri-plugin-updater` downloads, verifies the signature, installs, restarts.
-   - **Android**: the app finds the newer GitHub release and opens its APK; the user taps
-     Install. Android only accepts it when it is signed with the same key as the installed app.
+   - **Android**: the app finds the newer GitHub release, downloads its APK itself (only
+     this repository's release assets) and opens Android's installer; the user confirms.
+     The first time, Android asks to allow "Install unknown apps" for the app; after that
+     updates never need a browser or GitHub. Android only accepts the APK when it is signed
+     with the same key as the installed app. (Updating *to* the first version that has this
+     is still the old way: install that APK once by hand.)
 
 Only published releases count. Tags with a suffix (`v1.2.0-beta.1`) become prereleases
 and never show the popup.

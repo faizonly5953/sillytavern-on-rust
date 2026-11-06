@@ -12,6 +12,7 @@ use serde_json::Value;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
+use crate::ai_character;
 use crate::character::{self, CharacterData, CharacterSummary};
 use crate::chat::{self, ChatFile, ChatSummary};
 use crate::cloud;
@@ -349,6 +350,69 @@ pub async fn app_info(app: AppHandle) -> AppResult<AppInfo> {
 pub async fn check_release(app: AppHandle, state: State<'_, AppState>) -> AppResult<Option<updates::ReleaseInfo>> {
     let current = app.package_info().version.to_string();
     updates::check_latest(&state.http, &current).await
+}
+
+/// "Create with AI": asks the configured LLM for a character card from a free-text description.
+/// Returns the card fields, or `None` when the user stopped it. Nothing is saved here; the UI
+/// opens the card in the editor so it can be reviewed first.
+#[tauri::command]
+pub async fn generate_character(state: State<'_, AppState>, gen_id: String, description: String) -> AppResult<Option<Value>> {
+    if description.trim().is_empty() {
+        return Err(invalid("Describe the character you want first"));
+    }
+    let settings = lock(&state.settings).clone();
+    let api_key = lock(&state.secrets).get(settings.provider.secret_key()).cloned().unwrap_or_default();
+    let client = state.http.clone();
+    let prompt = ai_character::prompt(&description);
+    let mut params = settings.generation.clone();
+    params.max_tokens = params.max_tokens.max(ai_character::MIN_TOKENS);
+
+    let task = tokio::spawn(async move {
+        let request = GenRequest {
+            conn: settings.connections.get(settings.provider),
+            api_key: &api_key,
+            params: &params,
+            prompt: &prompt,
+        };
+        let mut reply = String::new();
+        providers::generate(&client, settings.provider, request, |event| {
+            if let StreamEvent::Delta { text } = event {
+                reply.push_str(&text);
+            }
+        })
+        .await?;
+        Ok::<String, AppError>(reply)
+    });
+    lock(&state.generations).insert(gen_id.clone(), task.abort_handle());
+    let result = task.await;
+    lock(&state.generations).remove(&gen_id);
+
+    match result {
+        Ok(Ok(reply)) => ai_character::parse_card(&reply).map(Some),
+        Ok(Err(e)) => Err(e),
+        Err(e) if e.is_cancelled() => Ok(None),
+        Err(e) => Err(invalid(format!("Generation task failed: {e}"))),
+    }
+}
+
+/// Android: downloads the release APK into the app's cache folder and returns its path.
+/// The URL must be an APK of this project's own GitHub releases.
+#[tauri::command]
+pub async fn download_update(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    on_progress: Channel<updates::DownloadProgress>,
+) -> AppResult<String> {
+    if !updates::is_release_asset_url(&url) {
+        return Err(invalid("Not an official release download"));
+    }
+    let dest = app.path().app_cache_dir().map_err(|e| invalid(e.to_string()))?.join("update.apk");
+    updates::download(&state.http, &url, &dest, |p| {
+        let _ = on_progress.send(p);
+    })
+    .await?;
+    Ok(dest.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

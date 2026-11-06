@@ -12,6 +12,11 @@
 #   public *;
 #}
 
+# The update installer is only reached from JavaScript (WebView bridge), so R8 would strip it.
+-keep class com.sillytavern.rs.ApkInstaller {
+    @android.webkit.JavascriptInterface <methods>;
+}
+
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
 #-keepattributes SourceFile,LineNumberTable

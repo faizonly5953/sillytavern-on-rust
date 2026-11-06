@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { AiCharacterDialog } from './components/AiCharacterDialog';
 import { CharacterEditor } from './components/CharacterEditor';
 import { ChatsPanel } from './components/ChatsPanel';
 import { ChatView } from './components/ChatView';
@@ -72,6 +73,7 @@ export default function App() {
       <PromptInspector />
       <CharacterEditor />
       <ImportUrlDialog />
+      <AiCharacterDialog />
       <UpdateDialog />
       <CloudSetup />
       <ConflictDialog />
