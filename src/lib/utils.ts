@@ -90,3 +90,34 @@ export function errorMessage(error: unknown): string {
 export const newId = () => crypto.randomUUID();
 
 export const isTouchDevice = () => window.matchMedia('(pointer: coarse)').matches;
+
+/**
+ * Saves a text file: the share sheet where the platform can share files (phones), otherwise
+ * a normal download. Returns false when the user dismissed the share sheet.
+ */
+export async function saveTextFile(name: string, text: string, mime = 'application/octet-stream'): Promise<boolean> {
+  const file = new File([text], name, { type: mime });
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: name });
+      return true;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return false;
+      // Any other failure: fall through to a plain download.
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return true;
+}
+
+/** SillyTavern JSONL: the header line, then one message per line. */
+export function chatToJsonl(chat: { header: unknown; messages: unknown[] }) {
+  return [chat.header, ...chat.messages].map((v) => JSON.stringify(v)).join('\n') + '\n';
+}

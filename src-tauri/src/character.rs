@@ -236,6 +236,10 @@ pub struct CharacterSummary {
     pub last_message: String,
     /// When the newest chat changed, in ms (0 when there is none).
     pub last_active: u64,
+    /// Messages over all chats: total, written by the user, written by the character.
+    pub message_count: u64,
+    pub user_count: u64,
+    pub assistant_count: u64,
 }
 
 fn summarize(file: &str, card: &CharacterData, modified: u64) -> CharacterSummary {
@@ -249,12 +253,17 @@ fn summarize(file: &str, card: &CharacterData, modified: u64) -> CharacterSummar
         modified,
         last_message: String::new(),
         last_active: 0,
+        message_count: 0,
+        user_count: 0,
+        assistant_count: 0,
     }
 }
 
 /// Fills chat activity; not cached because chats change far more often than cards.
 fn with_activity(dirs: &DataDirs, mut summary: CharacterSummary) -> CharacterSummary {
     (summary.last_active, summary.last_message) = crate::chat::latest_activity(dirs, &summary.file);
+    let counts = crate::chat::message_counts(dirs, &summary.file);
+    (summary.message_count, summary.user_count, summary.assistant_count) = (counts.total, counts.user, counts.assistant);
     summary
 }
 

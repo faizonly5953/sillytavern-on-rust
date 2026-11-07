@@ -1,11 +1,11 @@
 // Chat history list for the active character: open, new, rename, delete.
 
 import { useEffect, useState } from 'react';
-import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Check, Download, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApp } from '../lib/store';
 import type { ChatSummary } from '../lib/types';
-import { cn, errorMessage, formatDate } from '../lib/utils';
+import { chatToJsonl, cn, errorMessage, formatDate, saveTextFile } from '../lib/utils';
 import { Button, IconButton, Input, Modal } from './ui';
 
 export function ChatsPanel() {
@@ -43,6 +43,17 @@ export function ChatsPanel() {
       if (renaming.file === currentChat) await openChat(file);
       setRenaming(null);
       await reload();
+    } catch (e) {
+      toast(errorMessage(e));
+    }
+  }
+
+  async function exportChat(file: string) {
+    if (!activeFile) return;
+    try {
+      const chat = await api.loadChat(activeFile, file);
+      const saved = await saveTextFile(file, chatToJsonl(chat), 'application/jsonl');
+      if (saved) toast(`Exported ${file}`, 'info');
     } catch (e) {
       toast(errorMessage(e));
     }
@@ -109,6 +120,9 @@ export function ChatsPanel() {
                     {c.message_count} messages · {formatDate(c.modified)}
                   </div>
                 </button>
+                <IconButton label="Export as JSONL" className="h-8 w-8" onClick={() => void exportChat(c.file)}>
+                  <Download size={14} />
+                </IconButton>
                 <IconButton label="Rename" className="h-8 w-8" onClick={() => setRenaming({ file: c.file, name: c.file.replace(/\.jsonl$/, '') })}>
                   <Pencil size={14} />
                 </IconButton>
