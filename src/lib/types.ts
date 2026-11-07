@@ -144,6 +144,8 @@ export interface BuiltPrompt {
   messages: PromptMessage[];
   prefill: string | null;
   total_tokens: number;
+  /** The model's own tokenizer was used; otherwise a close approximation. */
+  tokens_exact: boolean;
   budget: number;
   history_included: number;
   history_total: number;

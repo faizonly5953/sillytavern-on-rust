@@ -11,7 +11,7 @@ use crate::character::CharacterData;
 use crate::macros::{MacroContext, substitute};
 
 pub use crate::macros::substitute as substitute_macros;
-use crate::settings::{Persona, Settings};
+use crate::settings::{Persona, Provider, Settings};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -34,6 +34,8 @@ pub struct BuiltPrompt {
     /// Text the reply must start with (Claude prefill).
     pub prefill: Option<String>,
     pub total_tokens: u32,
+    /// True when the count comes from the model's own tokenizer, false for a close approximation.
+    pub tokens_exact: bool,
     pub budget: u32,
     pub history_included: usize,
     pub history_total: usize,
@@ -52,19 +54,44 @@ pub enum GenMode {
     Explain,
 }
 
-/// Same heuristic SillyTavern uses when no tokenizer is available.
-pub fn estimate_tokens(text: &str) -> u32 {
-    (text.chars().count() as f32 / 3.35).ceil() as u32 + 4
+/// Counts tokens with a real BPE tokenizer (tiktoken). OpenAI models get their own encoding
+/// (exact); Claude, Gemini and other OpenAI-compatible models have no offline tokenizer, so
+/// they use `o200k_base`, which is close but only an approximation.
+#[derive(Clone, Copy)]
+pub struct Tokenizer {
+    bpe: &'static tiktoken_rs::CoreBPE,
+    pub exact: bool,
 }
 
-fn message(role: Role, content: String) -> PromptMessage {
-    let tokens = estimate_tokens(&content);
+impl Tokenizer {
+    pub fn for_model(provider: Provider, model: &str) -> Self {
+        if provider == Provider::Openai
+            && let Ok(bpe) = tiktoken_rs::get_bpe_from_model(model.trim())
+        {
+            return Self { bpe, exact: true };
+        }
+        Self { bpe: tiktoken_rs::o200k_base_singleton(), exact: false }
+    }
+
+    pub fn for_settings(settings: &Settings) -> Self {
+        let provider = settings.provider;
+        Self::for_model(provider, &settings.connections.get(provider).model)
+    }
+
+    /// Tokens of one text, plus the few tokens of per-message framing chat APIs add.
+    pub fn count(&self, text: &str) -> u32 {
+        self.bpe.encode_ordinary(text).len() as u32 + 4
+    }
+}
+
+fn message(tok: Tokenizer, role: Role, content: String) -> PromptMessage {
+    let tokens = tok.count(&content);
     PromptMessage { role, content, tokens }
 }
 
-fn push_nonempty(target: &mut Vec<PromptMessage>, role: Role, content: String) {
+fn push_nonempty(tok: Tokenizer, target: &mut Vec<PromptMessage>, role: Role, content: String) {
     if !content.trim().is_empty() {
-        target.push(message(role, content));
+        target.push(message(tok, role, content));
     }
 }
 
@@ -81,7 +108,7 @@ fn split_examples(raw: &str) -> Vec<String> {
     blocks.into_iter().map(str::trim).filter(|b| !b.is_empty()).map(String::from).collect()
 }
 
-fn history_message(value: &Value) -> Option<PromptMessage> {
+fn history_message(tok: Tokenizer, value: &Value) -> Option<PromptMessage> {
     if value.get("is_system").and_then(Value::as_bool).unwrap_or(false) {
         return None; // hidden from the AI, like SillyTavern
     }
@@ -90,7 +117,7 @@ fn history_message(value: &Value) -> Option<PromptMessage> {
         return None;
     }
     let is_user = value.get("is_user").and_then(Value::as_bool).unwrap_or(false);
-    Some(message(if is_user { Role::User } else { Role::Assistant }, content.to_string()))
+    Some(message(tok, if is_user { Role::User } else { Role::Assistant }, content.to_string()))
 }
 
 pub fn macro_context<'a>(card: &'a CharacterData, persona: &'a Persona) -> MacroContext<'a> {
@@ -108,6 +135,7 @@ pub fn macro_context<'a>(card: &'a CharacterData, persona: &'a Persona) -> Macro
 
 /// `input` is the user's draft, only used by `GenMode::Improve`.
 pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, history: &[Value], mode: GenMode, input: &str) -> BuiltPrompt {
+    let tok = Tokenizer::for_settings(settings);
     let ctx = macro_context(card, persona);
     let sub = |text: &str| substitute(text, &ctx).trim().to_string();
     let prompts = &settings.prompts;
@@ -121,20 +149,20 @@ pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, histo
         prompts.main_prompt.clone()
     };
     if !explain {
-        push_nonempty(&mut head, Role::System, sub(&main));
+        push_nonempty(tok, &mut head, Role::System, sub(&main));
     }
-    push_nonempty(&mut head, Role::System, sub(&persona.description));
-    push_nonempty(&mut head, Role::System, sub(&card.description));
+    push_nonempty(tok, &mut head, Role::System, sub(&persona.description));
+    push_nonempty(tok, &mut head, Role::System, sub(&card.description));
     if !card.personality.trim().is_empty() {
-        head.push(message(Role::System, format!("{}'s personality: {}", card.name, sub(&card.personality))));
+        head.push(message(tok, Role::System, format!("{}'s personality: {}", card.name, sub(&card.personality))));
     }
     if !card.scenario.trim().is_empty() {
-        head.push(message(Role::System, format!("Scenario: {}", sub(&card.scenario))));
+        head.push(message(tok, Role::System, format!("Scenario: {}", sub(&card.scenario))));
     }
     for block in split_examples(&card.mes_example) {
-        head.push(message(Role::System, format!("{}\n{}", sub(&prompts.new_example_chat), sub(&block))));
+        head.push(message(tok, Role::System, format!("{}\n{}", sub(&prompts.new_example_chat), sub(&block))));
     }
-    push_nonempty(&mut head, Role::System, sub(&prompts.new_chat_prompt));
+    push_nonempty(tok, &mut head, Role::System, sub(&prompts.new_chat_prompt));
 
     let mut tail = Vec::new();
     let post = if prompts.prefer_char_instructions && !card.post_history_instructions.trim().is_empty() {
@@ -143,7 +171,7 @@ pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, histo
         prompts.post_history.clone()
     };
     if !explain {
-        push_nonempty(&mut tail, Role::System, sub(&post));
+        push_nonempty(tok, &mut tail, Role::System, sub(&post));
     }
     match mode {
         GenMode::Explain => {
@@ -151,11 +179,11 @@ pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, histo
                 "" => format!("Write the explanation in the language {} uses in their own messages.", ctx.user),
                 lang => format!("Write the explanation in {lang}."),
             };
-            tail.push(message(Role::System, format!("{}\n{language}\n\nMessage from {}:\n{}", sub(&prompts.sloth_prompt), card.name, sub(input))));
+            tail.push(message(tok, Role::System, format!("{}\n{language}\n\nMessage from {}:\n{}", sub(&prompts.sloth_prompt), card.name, sub(input))));
         }
-        GenMode::Continue => push_nonempty(&mut tail, Role::System, sub(&prompts.continue_nudge)),
-        GenMode::Impersonate => push_nonempty(&mut tail, Role::System, sub(&prompts.impersonation_prompt)),
-        GenMode::Improve => tail.push(message(Role::System, format!("{}\n\nDraft:\n{}", sub(&prompts.improve_prompt), sub(input)))),
+        GenMode::Continue => push_nonempty(tok, &mut tail, Role::System, sub(&prompts.continue_nudge)),
+        GenMode::Impersonate => push_nonempty(tok, &mut tail, Role::System, sub(&prompts.impersonation_prompt)),
+        GenMode::Improve => tail.push(message(tok, Role::System, format!("{}\n\nDraft:\n{}", sub(&prompts.improve_prompt), sub(input)))),
         GenMode::Normal => {}
     }
 
@@ -163,7 +191,7 @@ pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, histo
     let budget = generation.context_size.saturating_sub(generation.max_tokens);
     let fixed: u32 = head.iter().chain(tail.iter()).map(|m| m.tokens).sum();
     let mut remaining = budget.saturating_sub(fixed);
-    let candidates: Vec<PromptMessage> = history.iter().filter_map(history_message).collect();
+    let candidates: Vec<PromptMessage> = history.iter().filter_map(|m| history_message(tok, m)).collect();
     let mut picked = Vec::new();
     // Newest first; the latest message is always kept even if it overflows.
     for candidate in candidates.iter().rev() {
@@ -182,6 +210,7 @@ pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, histo
     let prefill = (mode == GenMode::Normal).then(|| sub(&prompts.assistant_prefill)).filter(|p| !p.is_empty());
     BuiltPrompt {
         total_tokens: messages.iter().map(|m| m.tokens).sum(),
+        tokens_exact: tok.exact,
         messages,
         prefill,
         budget,
@@ -208,6 +237,15 @@ mod tests {
 
     fn persona() -> Persona {
         Persona { id: "p".into(), name: "Faiz".into(), ..Default::default() }
+    }
+
+    #[test]
+    fn tokenizer_is_exact_for_openai_models_only() {
+        let exact = Tokenizer::for_model(Provider::Openai, "gpt-4o");
+        assert!(exact.exact);
+        assert_eq!(exact.count("hello world"), 2 + 4);
+        assert!(!Tokenizer::for_model(Provider::Openai, "my-local-llama").exact);
+        assert!(!Tokenizer::for_model(Provider::Claude, "gpt-4o").exact);
     }
 
     #[test]
