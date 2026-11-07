@@ -130,6 +130,58 @@ fn last_line(path: &std::path::Path) -> Option<String> {
     Some(line.to_string())
 }
 
+/// Message totals across all of a character's chats (the header line is not a message).
+#[derive(Serialize, Clone, Copy, Debug, Default, PartialEq)]
+pub struct MessageCounts {
+    pub total: u64,
+    pub user: u64,
+    pub assistant: u64,
+}
+
+type CountCache = std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, u64, MessageCounts)>>;
+
+/// Counts one chat file; cached by (modified, size) so the home list stays cheap.
+fn count_file(path: &std::path::Path) -> MessageCounts {
+    static CACHE: std::sync::OnceLock<CountCache> = std::sync::OnceLock::new();
+    let cache = CACHE.get_or_init(Default::default);
+    let key = (paths::modified_ms(path), fs::metadata(path).map(|m| m.len()).unwrap_or(0));
+    if let Some((m, l, c)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(path)
+        && (*m, *l) == key
+    {
+        return *c;
+    }
+    let (_, messages) = parse_jsonl(&fs::read_to_string(path).unwrap_or_default());
+    let mut counts = MessageCounts::default();
+    for m in &messages {
+        counts.total += 1;
+        if m.get("is_user").and_then(Value::as_bool).unwrap_or(false) {
+            counts.user += 1;
+        } else if !m.get("is_system").and_then(Value::as_bool).unwrap_or(false) {
+            counts.assistant += 1;
+        }
+    }
+    cache.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_path_buf(), (key.0, key.1, counts));
+    counts
+}
+
+/// Message counts summed over every chat of a character.
+pub fn message_counts(dirs: &DataDirs, character_file: &str) -> MessageCounts {
+    let Ok(dir) = dirs.chat_dir(character_file) else { return MessageCounts::default() };
+    let mut sum = MessageCounts::default();
+    for path in fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("jsonl"))
+    {
+        let c = count_file(&path);
+        sum.total += c.total;
+        sum.user += c.user;
+        sum.assistant += c.assistant;
+    }
+    sum
+}
+
 /// (modified ms, last message preview) of a character's newest chat, for the home list.
 pub fn latest_activity(dirs: &DataDirs, character_file: &str) -> (u64, String) {
     let Ok(dir) = dirs.chat_dir(character_file) else { return (0, String::new()) };

@@ -75,6 +75,10 @@ export interface CharacterSummary {
   last_message: string;
   /** When the newest chat changed, ms (0 when none). */
   last_active: number;
+  /** Messages over all of this character's chats: total, yours, the character's. */
+  message_count: number;
+  user_count: number;
+  assistant_count: number;
 }
 
 export interface CharacterData {
