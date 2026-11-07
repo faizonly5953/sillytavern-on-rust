@@ -130,6 +130,7 @@ mod tests {
             ],
             prefill: Some("Sure, ".into()),
             total_tokens: 2,
+            tokens_exact: false,
             budget: 10,
             history_included: 1,
             history_total: 1,

@@ -58,6 +58,7 @@ pub fn prompt(description: &str) -> BuiltPrompt {
         ],
         prefill: None,
         total_tokens: 0,
+        tokens_exact: false,
         budget: 0,
         history_included: 0,
         history_total: 0,

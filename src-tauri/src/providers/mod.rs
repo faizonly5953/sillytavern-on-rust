@@ -169,6 +169,7 @@ mod tests {
             ],
             prefill: None,
             total_tokens: 0,
+            tokens_exact: false,
             budget: 0,
             history_included: 2,
             history_total: 2,
