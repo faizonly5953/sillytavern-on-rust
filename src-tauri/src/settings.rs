@@ -120,6 +120,10 @@ pub struct PromptSettings {
     pub new_example_chat: String,
     /// Claude only: text the reply is forced to start with.
     pub assistant_prefill: String,
+    /// Sloth Mode: explains one of {{char}}'s messages (appended after this prompt).
+    pub sloth_prompt: String,
+    /// Language of Sloth Mode explanations; empty follows the language {{user}} writes in.
+    pub sloth_language: String,
 }
 
 impl Default for PromptSettings {
@@ -135,6 +139,8 @@ impl Default for PromptSettings {
             new_chat_prompt: "[Start a new Chat]".into(),
             new_example_chat: "[Example Chat]".into(),
             assistant_prefill: String::new(),
+            sloth_prompt: "[Pause the roleplay. Explain the message from {{char}} below to {{user}} in plain, simple words, as a friend would. Cover: what {{char}} actually means, including anything implied or left unsaid; what {{char}} is feeling and why; what {{char}} is doing (actions and body language); and how it connects to what happened before in the story. If {{char}} asks or expects something from {{user}}, say what. Keep it short and easy to read, use a few short paragraphs or bullet points, and do not continue the story or write as {{char}}.]".into(),
+            sloth_language: String::new(),
         }
     }
 }
@@ -164,6 +170,7 @@ pub struct UiSettings {
     pub last_chat: Option<String>,
     pub show_reasoning: bool,
     pub enter_to_send: bool,
+    pub sloth_mode: bool,
 }
 
 impl Default for UiSettings {
@@ -175,6 +182,7 @@ impl Default for UiSettings {
             last_chat: None,
             show_reasoning: true,
             enter_to_send: true,
+            sloth_mode: false,
         }
     }
 }

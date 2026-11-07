@@ -171,6 +171,7 @@ function GenerationTab({ settings, update }: { settings: Settings; update: Updat
       <Slider label="Frequency penalty" value={g.frequency_penalty} min={-2} max={2} step={0.01} onChange={(v) => set('frequency_penalty', v)} hint="OpenAI-compatible only." />
       <Slider label="Presence penalty" value={g.presence_penalty} min={-2} max={2} step={0.01} onChange={(v) => set('presence_penalty', v)} hint="OpenAI-compatible only." />
       <Toggle label="Stream replies" checked={g.stream} onChange={(v) => set('stream', v)} />
+      <Toggle label="Sloth Mode" checked={settings.ui.sloth_mode} onChange={(v) => update((s) => void (s.ui.sloth_mode = v))} />
     </div>
   );
 }
@@ -206,6 +207,20 @@ function PromptsTab({ settings, update }: { settings: Settings; update: Update }
       {text('improve_prompt', 'Improve prompt', 'Used by "Improve my draft". Your draft is added after this text.', 4)}
       {text('new_chat_prompt', 'New chat marker', undefined, 1)}
       {text('new_example_chat', 'Example chat marker', undefined, 1)}
+      {text('sloth_prompt', 'Sloth Mode prompt', "Explains a character message. The message is added after this text; the explanation never enters the chat's context.", 5)}
+      <Field label="Sloth Mode language" hint="Leave empty to use the language you write in.">
+        <Input
+          list="sloth-languages"
+          placeholder="Auto"
+          value={p.sloth_language}
+          onChange={(e) => update((s) => void (s.prompts.sloth_language = e.target.value))}
+        />
+        <datalist id="sloth-languages">
+          {['English', 'Bahasa Indonesia', '日本語', '한국어', '中文', 'Español', 'Português', 'Français', 'Deutsch', 'Русский', 'العربية', 'हिन्दी', 'Tiếng Việt', 'ไทย'].map((l) => (
+            <option key={l} value={l} />
+          ))}
+        </datalist>
+      </Field>
     </div>
   );
 }

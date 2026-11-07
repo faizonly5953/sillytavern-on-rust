@@ -110,6 +110,8 @@ interface AppStore {
   editMessage(index: number, text: string): Promise<void>;
   deleteMessage(index: number): Promise<void>;
   swipe(index: number, direction: -1 | 1): Promise<void>;
+  /** Saves a Sloth Mode explanation beside the message (never into its text). */
+  setExplanation(chatFile: string, index: number, mes: string, text: string): Promise<void>;
 }
 
 export function activePersona(settings: Settings): Persona {
@@ -140,6 +142,7 @@ function withText(message: ChatMessage, text: string, reasoning?: string): ChatM
   const swipes = message.swipes ? [...message.swipes] : undefined;
   if (swipes) swipes[id] = text;
   const extra = { ...(message.extra ?? {}) };
+  delete extra.sloth; // it explained the old text
   let swipe_info = message.swipe_info;
   if (reasoning !== undefined) {
     if (reasoning) extra.reasoning = reasoning;
@@ -611,7 +614,7 @@ export const useApp = create<AppStore>((set, get) => {
             swipes,
             swipe_id: swipes.length - 1,
             mes: '',
-            extra: { ...(last.extra ?? {}), reasoning: undefined },
+            extra: { ...(last.extra ?? {}), reasoning: undefined, sloth: undefined },
           },
         ];
       } else if (kind === 'continue') {
@@ -706,8 +709,19 @@ export const useApp = create<AppStore>((set, get) => {
         swipes,
         swipe_id: id,
         mes: swipes[id],
-        extra: { ...(message.extra ?? {}), reasoning: swipeReasoning(message, id) },
+        extra: { ...(message.extra ?? {}), reasoning: swipeReasoning(message, id), sloth: undefined },
       };
+      setMessages(messages);
+      await persist();
+    },
+
+    async setExplanation(chatFile, index, mes, text) {
+      const chat = get().chat;
+      const message = chat?.messages[index];
+      // The chat may have changed while the explanation was written; drop it then.
+      if (!chat || chat.file !== chatFile || !message || message.mes !== mes) return;
+      const messages = [...chat.messages];
+      messages[index] = { ...message, extra: { ...(message.extra ?? {}), sloth: text } };
       setMessages(messages);
       await persist();
     },

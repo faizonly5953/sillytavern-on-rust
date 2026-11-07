@@ -2,7 +2,7 @@
 
 export type Provider = 'openai' | 'claude' | 'gemini';
 export type Role = 'system' | 'user' | 'assistant';
-export type GenMode = 'normal' | 'continue' | 'impersonate' | 'improve';
+export type GenMode = 'normal' | 'continue' | 'impersonate' | 'improve' | 'explain';
 
 export interface ProviderConn {
   base_url: string;
@@ -31,6 +31,8 @@ export interface PromptSettings {
   new_chat_prompt: string;
   new_example_chat: string;
   assistant_prefill: string;
+  sloth_prompt: string;
+  sloth_language: string;
 }
 
 export interface Persona {
@@ -48,6 +50,7 @@ export interface UiSettings {
   last_chat: string | null;
   show_reasoning: boolean;
   enter_to_send: boolean;
+  sloth_mode: boolean;
 }
 
 export interface Settings {
@@ -107,7 +110,8 @@ export interface ChatMessage {
   swipes?: string[];
   swipe_id?: number;
   swipe_info?: SwipeInfo[];
-  extra?: { reasoning?: string; [key: string]: unknown };
+  /** `sloth`: Sloth Mode explanation; only `mes` reaches the prompt, so it never enters context. */
+  extra?: { reasoning?: string; sloth?: string; [key: string]: unknown };
   [key: string]: unknown;
 }
 

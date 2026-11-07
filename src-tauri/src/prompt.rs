@@ -48,6 +48,8 @@ pub enum GenMode {
     Impersonate,
     /// Rewrite the user's draft (`input`) as their next message.
     Improve,
+    /// Sloth Mode: explain {{char}}'s message (`input`) in plain words, outside the roleplay.
+    Explain,
 }
 
 /// Same heuristic SillyTavern uses when no tokenizer is available.
@@ -110,13 +112,17 @@ pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, histo
     let sub = |text: &str| substitute(text, &ctx).trim().to_string();
     let prompts = &settings.prompts;
 
+    // Explain is a step outside the roleplay: the "write the next reply" prompts would fight it.
+    let explain = mode == GenMode::Explain;
     let mut head = Vec::new();
     let main = if prompts.prefer_char_prompt && !card.system_prompt.trim().is_empty() {
         card.system_prompt.replace("{{original}}", &prompts.main_prompt)
     } else {
         prompts.main_prompt.clone()
     };
-    push_nonempty(&mut head, Role::System, sub(&main));
+    if !explain {
+        push_nonempty(&mut head, Role::System, sub(&main));
+    }
     push_nonempty(&mut head, Role::System, sub(&persona.description));
     push_nonempty(&mut head, Role::System, sub(&card.description));
     if !card.personality.trim().is_empty() {
@@ -136,8 +142,17 @@ pub fn build(card: &CharacterData, persona: &Persona, settings: &Settings, histo
     } else {
         prompts.post_history.clone()
     };
-    push_nonempty(&mut tail, Role::System, sub(&post));
+    if !explain {
+        push_nonempty(&mut tail, Role::System, sub(&post));
+    }
     match mode {
+        GenMode::Explain => {
+            let language = match prompts.sloth_language.trim() {
+                "" => format!("Write the explanation in the language {} uses in their own messages.", ctx.user),
+                lang => format!("Write the explanation in {lang}."),
+            };
+            tail.push(message(Role::System, format!("{}\n{language}\n\nMessage from {}:\n{}", sub(&prompts.sloth_prompt), card.name, sub(input))));
+        }
         GenMode::Continue => push_nonempty(&mut tail, Role::System, sub(&prompts.continue_nudge)),
         GenMode::Impersonate => push_nonempty(&mut tail, Role::System, sub(&prompts.impersonation_prompt)),
         GenMode::Improve => tail.push(message(Role::System, format!("{}\n\nDraft:\n{}", sub(&prompts.improve_prompt), sub(input)))),
@@ -241,5 +256,22 @@ mod tests {
         assert!(last.contains("Rewrite the draft below as Faiz's next message"));
         assert!(last.ends_with("Draft:\nFaiz opens the door slowly"));
         assert!(m.prefill.is_none());
+    }
+
+    #[test]
+    fn explain_skips_roleplay_prompts() {
+        let mut settings = Settings::default();
+        settings.prompts.post_history = "Be vivid.".into();
+        let history = [json!({"is_user": true, "mes": "Hi"})];
+        let e = build(&card(), &persona(), &settings, &history, GenMode::Explain, "I owe you a debt.");
+        assert!(!e.messages.iter().any(|m| m.content.contains("next reply") || m.content.contains("Be vivid.")));
+        let last = &e.messages.last().unwrap().content;
+        assert!(last.contains("Explain the message from Ann below to Faiz"));
+        assert!(last.contains("language Faiz uses"));
+        assert!(last.ends_with("Message from Ann:\nI owe you a debt."));
+        assert!(e.prefill.is_none());
+        settings.prompts.sloth_language = "Bahasa Indonesia".into();
+        let e = build(&card(), &persona(), &settings, &history, GenMode::Explain, "x");
+        assert!(e.messages.last().unwrap().content.contains("Write the explanation in Bahasa Indonesia."));
     }
 }

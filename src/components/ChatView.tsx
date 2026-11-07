@@ -183,6 +183,9 @@ export function ChatView() {
   const newChat = useApp((s) => s.newChat);
   const scroller = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  /** Last scrollTop seen; our own scrolling only ever moves down, so moving up is always the user. */
+  const lastTop = useRef(0);
+  const touchY = useRef(0);
 
   useEffect(() => {
     stickToBottom.current = true;
@@ -190,7 +193,9 @@ export function ChatView() {
 
   useEffect(() => {
     const el = scroller.current;
-    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
+    if (!el || !stickToBottom.current) return;
+    el.scrollTop = el.scrollHeight;
+    lastTop.current = el.scrollTop;
   }, [chat?.file, chat?.messages.length, streamLength]);
 
   if (!card || !chat || !summary) return <EmptyState />;
@@ -235,9 +240,25 @@ export function ChatView() {
 
       <div
         ref={scroller}
+        // Wheel and touch release the bottom at once, before a streamed token can snap the view back.
+        onWheel={(e) => {
+          if (e.deltaY < 0) stickToBottom.current = false;
+        }}
+        onTouchStart={(e) => {
+          touchY.current = e.touches[0].clientY;
+        }}
+        onTouchMove={(e) => {
+          if (e.touches[0].clientY > touchY.current) stickToBottom.current = false;
+          touchY.current = e.touches[0].clientY;
+        }}
         onScroll={(e) => {
           const el = e.currentTarget;
-          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+          const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+          const up = el.scrollTop < lastTop.current - 1;
+          // Shrinking content clamps scrollTop upward while still at the bottom; that is not the user.
+          if (up && !atBottom) stickToBottom.current = false;
+          else if (!up && atBottom) stickToBottom.current = true;
+          lastTop.current = el.scrollTop;
         }}
         className="flex-1 overflow-y-auto"
       >
