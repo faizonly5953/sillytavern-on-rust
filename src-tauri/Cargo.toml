@@ -34,6 +34,7 @@ sha2 = "0.10"
 chacha20poly1305 = "0.10"
 argon2 = "0.5"
 getrandom = "0.3"
+tiktoken-rs = "0.12.1"
 
 # Self-update is desktop-only; Android updates by downloading the new APK.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

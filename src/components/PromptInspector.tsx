@@ -40,7 +40,7 @@ export function PromptInspector() {
         <div className="space-y-3">
           <div className="grid grid-cols-3 gap-2 text-center">
             {[
-              ['Tokens (est.)', `${prompt.total_tokens} / ${prompt.budget}`],
+              [prompt.tokens_exact ? 'Tokens' : 'Tokens (≈)', `${prompt.total_tokens} / ${prompt.budget}`],
               ['History', `${prompt.history_included} / ${prompt.history_total}`],
               ['Messages', String(prompt.messages.length)],
             ].map(([label, value]) => (
@@ -54,7 +54,7 @@ export function PromptInspector() {
             <div key={i} className="rounded-xl border border-border bg-bg p-3">
               <div className="mb-1.5 flex items-center gap-2">
                 <span className={cn('rounded-md px-1.5 py-0.5 text-[11px] font-semibold uppercase', roleStyle[m.role])}>{m.role}</span>
-                <span className="text-[11px] text-muted">~{m.tokens} tokens</span>
+                <span className="text-[11px] text-muted">{prompt.tokens_exact ? '' : '~'}{m.tokens} tokens</span>
               </div>
               <pre className="whitespace-pre-wrap break-words font-sans text-xs leading-relaxed">{m.content}</pre>
             </div>
