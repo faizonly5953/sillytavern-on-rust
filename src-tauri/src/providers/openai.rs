@@ -123,6 +123,7 @@ mod tests {
             messages: vec![PromptMessage { role: Role::User, content: "hi".into(), tokens: 1 }],
             prefill: None,
             total_tokens: 1,
+            tokens_exact: false,
             budget: 1,
             history_included: 1,
             history_total: 1,

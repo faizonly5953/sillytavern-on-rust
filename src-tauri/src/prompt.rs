@@ -66,7 +66,7 @@ pub struct Tokenizer {
 impl Tokenizer {
     pub fn for_model(provider: Provider, model: &str) -> Self {
         if provider == Provider::Openai
-            && let Ok(bpe) = tiktoken_rs::get_bpe_from_model(model.trim())
+            && let Ok(bpe) = tiktoken_rs::bpe_for_model(model.trim())
         {
             return Self { bpe, exact: true };
         }
