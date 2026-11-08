@@ -192,6 +192,40 @@ pub async fn delete_chat(app: AppHandle, char_file: String, chat_file: String) -
     blocking(app, move |s| chat::delete(&s.dirs, &char_file, &chat_file)).await
 }
 
+/// Asks where to save (the system "save as" screen, also on Android) and writes the chat there
+/// as JSONL. Returns the saved file's name, or None when the user cancelled.
+#[tauri::command]
+pub async fn export_chat(app: AppHandle, char_file: String, chat_file: String) -> AppResult<Option<String>> {
+    use std::io::Write;
+    use tauri_plugin_dialog::DialogExt;
+    use tauri_plugin_fs::{FsExt, OpenOptions};
+
+    let (name, mut text) = blocking(app.clone(), move |s| {
+        let chat = chat::load(&s.dirs, &char_file, &chat_file)?;
+        Ok((chat.file.clone(), chat::to_jsonl(&chat.header, &chat.messages)?))
+    })
+    .await?;
+    text.push('\n');
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || -> AppResult<Option<String>> {
+        let picked = handle
+            .dialog()
+            .file()
+            .set_file_name(name.clone())
+            .add_filter("Chat (JSONL)", &["jsonl"])
+            .blocking_save_file();
+        let Some(path) = picked else { return Ok(None) };
+        let mut opts = OpenOptions::default();
+        opts.write(true).truncate(true).create(true);
+        let mut file = handle.fs().open(path, opts)?;
+        file.write_all(text.as_bytes())?;
+        file.flush()?;
+        Ok(Some(name))
+    })
+    .await
+    .map_err(|e| invalid(format!("Export failed: {e}")))?
+}
+
 #[tauri::command]
 pub async fn rename_chat(app: AppHandle, char_file: String, chat_file: String, new_name: String) -> AppResult<String> {
     blocking(app, move |s| chat::rename(&s.dirs, &char_file, &chat_file, &new_name)).await

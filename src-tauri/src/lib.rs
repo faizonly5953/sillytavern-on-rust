@@ -34,7 +34,11 @@ pub fn run() {
             let _ = window.set_focus();
         }
     }));
-    let builder = builder.plugin(tauri_plugin_opener::init());
+    // dialog + fs: the "save as" screen used by chat export (the system file picker on Android).
+    let builder = builder
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init());
     // In-place self-update exists only on desktop; Android opens the new APK instead.
     #[cfg(desktop)]
     let builder = builder
@@ -72,6 +76,7 @@ pub fn run() {
             commands::save_chat,
             commands::delete_chat,
             commands::rename_chat,
+            commands::export_chat,
             commands::generate,
             commands::stop_generation,
             commands::preview_prompt,

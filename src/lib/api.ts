@@ -58,6 +58,8 @@ export const api = {
   saveChat: (charFile: string, chat: ChatFile) =>
     invoke<void>('save_chat', { charFile, chatFile: chat.file, header: chat.header, messages: chat.messages }),
   deleteChat: (charFile: string, chatFile: string) => invoke<void>('delete_chat', { charFile, chatFile }),
+  /** Opens the system "save as" screen; resolves with the saved file name, or null if cancelled. */
+  exportChat: (charFile: string, chatFile: string) => invoke<string | null>('export_chat', { charFile, chatFile }),
   renameChat: (charFile: string, chatFile: string, newName: string) =>
     invoke<string>('rename_chat', { charFile, chatFile, newName }),
 
