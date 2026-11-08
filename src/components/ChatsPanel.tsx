@@ -5,7 +5,7 @@ import { Check, Download, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { useApp } from '../lib/store';
 import type { ChatSummary } from '../lib/types';
-import { chatToJsonl, cn, errorMessage, formatDate, saveTextFile } from '../lib/utils';
+import { cn, errorMessage, formatDate } from '../lib/utils';
 import { Button, IconButton, Input, Modal } from './ui';
 
 export function ChatsPanel() {
@@ -51,9 +51,8 @@ export function ChatsPanel() {
   async function exportChat(file: string) {
     if (!activeFile) return;
     try {
-      const chat = await api.loadChat(activeFile, file);
-      const saved = await saveTextFile(file, chatToJsonl(chat), 'application/jsonl');
-      if (saved) toast(`Exported ${file}`, 'info');
+      const saved = await api.exportChat(activeFile, file);
+      if (saved) toast(`Saved ${saved}`, 'info');
     } catch (e) {
       toast(errorMessage(e));
     }
